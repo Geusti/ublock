@@ -171,8 +171,8 @@ def load_state():
 def main():
     parser = argparse.ArgumentParser(description="Cliente de Teste do Agente NEXUS / Ublock")
     parser.add_argument("-token", "--token", help="Código de pareamento gerado no painel")
-    parser.add_argument("-api", "--api", default="http://localhost:8000/api/v1", help="URL base da API Ublock")
-    parser.add_argument("-interval", "--interval", type=int, default=15, help="Intervalo de heartbeat em segundos")
+    parser.add_argument("-api", "--api", default="https://ublock-api-fn7d.onrender.com/api/v1", help="URL base da API Ublock")
+    parser.add_argument("-interval", "--interval", type=int, default=30, help="Intervalo de heartbeat em segundos")
     args = parser.parse_args()
 
     api_url = args.api.rstrip("/")
