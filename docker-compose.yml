@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ublock-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ublock
+      POSTGRES_PASSWORD: ublock_secure_dev_password
+      POSTGRES_DB: ublock_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ublock -d ublock_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ublock-backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: development
+      APP_NAME: "Ublock IT Asset Manager"
+      API_PREFIX: "/api/v1"
+      DATABASE_URL: "postgresql+psycopg://ublock:ublock_secure_dev_password@db:5432/ublock_db"
+      SECRET_KEY: "dev-long-secret-key-for-ublock-phase1-validation-only"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "480"
+      CORS_ORIGINS: '["http://localhost:5173", "http://localhost:3000", "http://localhost:80"]'
+      BOOTSTRAP_ADMIN_EMAIL: "admin@ubook.com.br"
+      BOOTSTRAP_ADMIN_PASSWORD: "UblockAdmin2026!"
+      BOOTSTRAP_ADMIN_NAME: "Administrador Ublock"
+      BOOTSTRAP_ORG_NAME: "Ubook Tecnologia"
+      BOOTSTRAP_ORG_SLUG: "ubook"
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m app.scripts.bootstrap_admin &&
+             python -m app.scripts.seed_demo_data &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ublock-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
