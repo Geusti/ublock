@@ -18,6 +18,7 @@ from app.schemas.agent import (
     AgentInventoryRequest,
     AgentInventoryResponse,
 )
+from app.api.v1.devices import get_next_asset_tag
 from app.services.audit_service import AuditService
 
 router = APIRouter(prefix="/agent", tags=["Agent"])
@@ -83,10 +84,13 @@ def enroll_agent(payload: AgentEnrollRequest, db: Session = Depends(get_db)):
 
         if not device:
             # Auto-register new computer from agent telemetry!
+            # Auto-generate next sequential asset tag UB-XXXX
+            auto_asset_tag = get_next_asset_tag(db, token_record.organization_id)
             device = Device(
                 organization_id=token_record.organization_id,
                 hostname=payload.hostname.strip(),
                 display_name=payload.hostname.strip(),
+                asset_tag=auto_asset_tag,
                 os_family=payload.os_family.upper() if payload.os_family else "WINDOWS",
                 os_version=payload.os_version,
                 status=DeviceStatusEnum.ONLINE.value,

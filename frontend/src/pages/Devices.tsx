@@ -56,6 +56,7 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [retiringDevice, setRetiringDevice] = useState<Device | null>(null);
+  const [deletingDevice, setDeletingDevice] = useState<Device | null>(null);
 
   // Form State (Shared for Create & Edit)
   const [formHostname, setFormHostname] = useState('');
@@ -245,6 +246,18 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
       fetchDevices();
     } catch (err: any) {
       setFeedback({ type: 'error', message: err.message || 'Erro ao retirar ativo.' });
+    }
+  };
+
+  const confirmDeletePermanently = async () => {
+    if (!deletingDevice) return;
+    try {
+      const res = await api.deleteDevicePermanently(deletingDevice.id);
+      setFeedback({ type: 'success', message: res.message || `Computador '${deletingDevice.display_name}' excluído permanentemente.` });
+      setDeletingDevice(null);
+      fetchDevices();
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err.message || 'Erro ao excluir computador permanentemente.' });
     }
   };
 
@@ -479,12 +492,21 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
                         {device.status !== 'RETIRED' && (
                           <button
                             onClick={() => setRetiringDevice(device)}
-                            title="Retirar de uso"
+                            title="Retirar de uso (Desativação Lógica)"
                             className="p-1.5 rounded text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 transition"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
+
+                        {/* Permanent Delete Device */}
+                        <button
+                          onClick={() => setDeletingDevice(device)}
+                          title="Excluir Definitivamente do Sistema"
+                          className="p-1.5 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-400/80" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -745,6 +767,47 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
                 className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium"
               >
                 Confirmar Retirada
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Permanent Delete Confirmation Modal */}
+      {deletingDevice && (
+        <Modal 
+          isOpen={!!deletingDevice} 
+          onClose={() => setDeletingDevice(null)} 
+          title="Excluir Computador Definitivamente"
+        >
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-400" />
+              <div>
+                <p className="font-semibold text-rose-200">Atenção: Ação Irreversível</p>
+                <p className="mt-1 leading-relaxed">
+                  Você está prestes a excluir permanentemente o computador <strong>{deletingDevice.display_name} ({deletingDevice.hostname})</strong>.
+                </p>
+                <p className="mt-2 text-rose-300/90 leading-relaxed">
+                  Todos os dados relacionados, histórico de telemetria, comandos de contenção e o agente pareado serão <strong>removidos do banco de dados</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#24334C]">
+              <button
+                type="button"
+                onClick={() => setDeletingDevice(null)}
+                className="px-4 py-2 rounded-lg text-sm text-slate-300 hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeletePermanently}
+                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-medium shadow-md shadow-rose-600/30"
+              >
+                Sim, Excluir Definitivamente
               </button>
             </div>
           </div>
