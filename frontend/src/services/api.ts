@@ -132,12 +132,6 @@ class ApiClient {
     });
   }
 
-  async deleteDevicePermanently(id: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>(`/devices/${id}?permanent=true`, {
-      method: 'DELETE',
-    });
-  }
-
   async getDeviceAccounts(deviceId: string): Promise<DeviceAccount[]> {
     return this.request<DeviceAccount[]>(`/devices/${deviceId}/accounts`);
   }

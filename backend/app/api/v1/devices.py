@@ -1,7 +1,6 @@
 import uuid
 import math
 import secrets
-import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, Path, status
@@ -26,19 +25,6 @@ from app.services.audit_service import AuditService
 from app.core.exceptions import NotFoundException, ConflictException, BadRequestException
 
 router = APIRouter(prefix="/devices", tags=["Devices"])
-
-
-def get_next_asset_tag(db: Session, organization_id: uuid.UUID) -> str:
-    """Calculates the next sequential asset tag UB-XXXX for the organization."""
-    devices = db.query(Device).filter(Device.organization_id == organization_id).all()
-    nums = []
-    for d in devices:
-        if d.asset_tag:
-            m = re.match(r"^UB-(\d+)$", d.asset_tag.strip())
-            if m:
-                nums.append(int(m.group(1)))
-    next_num = (max(nums) + 1) if nums else 1
-    return f"UB-{next_num:04d}"
 
 
 def format_device_out(device: Device) -> DeviceOut:
@@ -159,20 +145,14 @@ def create_device(
     db: Session = Depends(get_db)
 ):
     """Registers a new computer manually into the inventory."""
-    # Auto-generate next asset tag if not provided
-    asset_tag = payload.asset_tag.strip() if payload.asset_tag else get_next_asset_tag(db, current_admin.organization_id)
-
-    # Check asset_tag uniqueness
-    if asset_tag:
+    # Check asset_tag uniqueness if provided
+    if payload.asset_tag:
         existing = db.query(Device).filter(
             Device.organization_id == current_admin.organization_id,
-            Device.asset_tag == asset_tag
+            Device.asset_tag == payload.asset_tag.strip()
         ).first()
-        if existing and payload.asset_tag:
+        if existing:
             raise ConflictException(f"Etiqueta de patrimônio '{payload.asset_tag}' já está em uso nesta organização.")
-        elif existing:
-            # If auto-generated conflicted, increment
-            asset_tag = f"UB-{uuid.uuid4().hex[:6].upper()}"
 
     # Validate employee if assigned
     if payload.assigned_employee_id:
@@ -201,7 +181,7 @@ def create_device(
         manufacturer=payload.manufacturer,
         model=payload.model,
         serial_number=payload.serial_number,
-        asset_tag=asset_tag,
+        asset_tag=payload.asset_tag.strip() if payload.asset_tag else None,
         assigned_employee_id=payload.assigned_employee_id,
         department_id=payload.department_id,
         local_ip=payload.local_ip,
@@ -357,43 +337,19 @@ def update_device(
 
 
 @router.delete("/{device_id}", response_model=MessageResponse)
-def delete_device(
+def retire_device(
     device_id: uuid.UUID = Path(...),
-    permanent: bool = Query(False, description="Se True, exclui definitivamente o computador e todos os registros relacionados"),
     current_admin: AdminUser = Depends(require_technician_or_higher),
     db: Session = Depends(get_db)
 ):
-    """
-    Exclui ou retira de uso um computador.
-    - Se permanent=False (padrão): Retira de uso (status=RETIRED) preservando o histórico e telemetria.
-    - Se permanent=True: Remove permanentemente do banco de dados (cascade em agentes, telemetria e comandos).
-    """
+    """Retires a computer (soft-delete / status=RETIRED) to preserve audit and history."""
     device = db.query(Device).filter(
         Device.id == device_id,
         Device.organization_id == current_admin.organization_id
     ).first()
     if not device:
-        raise NotFoundException("Dispositivo não encontrado nesta organização.")
+        raise NotFoundException("Dispositivo não encontrado.")
 
-    device_name = device.display_name or device.hostname
-
-    if permanent:
-        # Permanent purge
-        db.delete(device)
-        db.commit()
-
-        AuditService.log_event(
-            db=db,
-            organization_id=current_admin.organization_id,
-            action="DEVICE_PERMANENT_DELETE",
-            outcome="SUCCESS",
-            actor_admin_id=current_admin.id,
-            details={"hostname": device.hostname, "display_name": device_name, "permanent": True}
-        )
-
-        return MessageResponse(message=f"Dispositivo '{device_name}' foi excluído permanentemente do sistema.")
-
-    # Soft retirement
     device.status = DeviceStatusEnum.RETIRED.value
     db.commit()
 
@@ -407,7 +363,7 @@ def delete_device(
         details={"hostname": device.hostname, "status": "RETIRED"}
     )
 
-    return MessageResponse(message=f"Dispositivo '{device_name}' retirado de uso com sucesso.")
+    return MessageResponse(message=f"Dispositivo '{device.display_name}' retirado de uso com sucesso.")
 
 
 @router.get("/{device_id}/accounts", response_model=List[DeviceAccountOut])
