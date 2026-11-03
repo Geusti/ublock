@@ -38,6 +38,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       }
     };
     fetchSummary();
+
+    // Auto-refresh metrics every 15 seconds for real-time monitoring
+    const timer = setInterval(fetchSummary, 15000);
+    return () => clearInterval(timer);
   }, []);
 
   const handleOpenAlertDevice = async (alertItem: AlertDeviceItem) => {

@@ -45,10 +45,25 @@ class AgentHeartbeatRequest(BaseModel):
     error_message: Optional[str] = Field(None, max_length=500)
 
 
+class AgentPendingCommandItem(BaseModel):
+    id: uuid.UUID
+    action_type: str
+    target_username: Optional[str] = None
+    reason: Optional[str] = None
+
+
 class AgentHeartbeatResponse(BaseModel):
     status: str = "ACK"
     server_time: datetime
-    next_heartbeat_seconds: int = 60
+    next_heartbeat_seconds: int = 15
+    pending_commands: List[AgentPendingCommandItem] = []
+
+
+class AgentCommandResultRequest(BaseModel):
+    agent_uuid: uuid.UUID
+    command_id: uuid.UUID
+    succeeded: bool
+    result_message: Optional[str] = None
 
 
 # Agent facing: Technical Inventory

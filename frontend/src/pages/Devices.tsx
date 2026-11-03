@@ -99,6 +99,10 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
 
   useEffect(() => {
     fetchDevices();
+
+    // Auto-refresh devices table every 15 seconds for real-time online/offline updates
+    const timer = setInterval(fetchDevices, 15000);
+    return () => clearInterval(timer);
   }, [page, osFilter, statusFilter, deptFilter, sortBy, sortDir]);
 
   useEffect(() => {

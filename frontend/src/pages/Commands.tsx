@@ -40,6 +40,10 @@ export const Commands: React.FC = () => {
 
   useEffect(() => {
     fetchCommands();
+
+    // Auto-refresh commands queue every 10 seconds
+    const timer = setInterval(fetchCommands, 10000);
+    return () => clearInterval(timer);
   }, [page, statusFilter]);
 
   const handleSimulateResult = async (commandId: string, succeeded: boolean) => {

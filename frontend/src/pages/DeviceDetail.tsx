@@ -63,6 +63,10 @@ export const DeviceDetail: React.FC<DeviceDetailProps> = ({ device: initialDevic
 
   useEffect(() => {
     reloadData();
+
+    // Auto-refresh detail, hardware status, and commands every 10 seconds
+    const timer = setInterval(reloadData, 10000);
+    return () => clearInterval(timer);
   }, [device.id]);
 
   const handleEmergencySubmit = async (data: {
@@ -71,7 +75,7 @@ export const DeviceDetail: React.FC<DeviceDetailProps> = ({ device: initialDevic
     reason: string;
   }) => {
     await api.createSimulatedCommand(device.id, data);
-    alert(`Ação de bloqueio '${data.action_type}' registrada em modo SIMULADO com auditoria.`);
+    alert(`Comando de contenção '${data.action_type}' enviado com sucesso! O agente local executará no computador em segundos.`);
     reloadData();
   };
 

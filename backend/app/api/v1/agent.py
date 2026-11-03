@@ -7,11 +7,14 @@ from app.api.agent_deps import get_current_agent, hash_token
 from app.models.device_agent import DeviceEnrollmentToken, DeviceAgent, AgentStatusEnum
 from app.models.device import Device, DeviceStatusEnum
 from app.models.device_telemetry import DeviceTelemetry
+from app.models.command import Command, CommandStatusEnum
 from app.schemas.agent import (
     AgentEnrollRequest,
     AgentEnrollResponse,
     AgentHeartbeatRequest,
     AgentHeartbeatResponse,
+    AgentPendingCommandItem,
+    AgentCommandResultRequest,
     AgentInventoryRequest,
     AgentInventoryResponse,
 )
@@ -191,13 +194,83 @@ def receive_heartbeat(
         if payload.agent_version:
             device.agent_version = payload.agent_version
 
+    # Check for pending security / containment commands queued for this device
+    pending_cmds = (
+        db.query(Command)
+        .filter(
+            Command.device_id == agent.device_id,
+            Command.status == CommandStatusEnum.PENDING.value
+        )
+        .all()
+    )
+
+    pending_items = []
+    for cmd in pending_cmds:
+        pending_items.append(
+            AgentPendingCommandItem(
+                id=cmd.id,
+                action_type=cmd.action_type,
+                target_username=cmd.target_account.username if cmd.target_account else None,
+                reason=cmd.reason
+            )
+        )
+
     db.commit()
 
     return AgentHeartbeatResponse(
         status="ACK",
         server_time=now,
-        next_heartbeat_seconds=60
+        next_heartbeat_seconds=15,
+        pending_commands=pending_items
     )
+
+
+@router.post("/command-result")
+def receive_command_result(
+    payload: AgentCommandResultRequest,
+    agent: DeviceAgent = Depends(get_current_agent),
+    db: Session = Depends(get_db)
+):
+    """
+    Receives execution confirmation from the agent for a dispatched containment action.
+    Updates the command status and records an immutable audit log entry.
+    """
+    now = datetime.now(timezone.utc)
+    cmd = db.query(Command).filter(
+        Command.id == payload.command_id,
+        Command.device_id == agent.device_id
+    ).first()
+
+    if not cmd:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comando não encontrado para este dispositivo."
+        )
+
+    cmd.status = CommandStatusEnum.SUCCEEDED.value if payload.succeeded else CommandStatusEnum.FAILED.value
+    cmd.completed_at = now
+    cmd.result_message = payload.result_message or ("Comando executado com sucesso pelo agente local" if payload.succeeded else "Falha na execução pelo agente")
+    cmd.mode = "REAL"
+
+    db.commit()
+
+    AuditService.log_event(
+        db=db,
+        organization_id=agent.organization_id,
+        action=f"AGENT_EXECUTE_ACTION:{cmd.action_type}",
+        outcome="SUCCESS" if payload.succeeded else "FAILED",
+        device_id=agent.device_id,
+        command_id=cmd.id,
+        details={
+            "action_type": cmd.action_type,
+            "mode": "REAL",
+            "succeeded": payload.succeeded,
+            "result_message": cmd.result_message,
+            "agent_uuid": str(payload.agent_uuid)
+        }
+    )
+
+    return {"status": "SUCCESS", "command_id": str(cmd.id), "new_status": cmd.status}
 
 
 @router.post("/inventory", response_model=AgentInventoryResponse)

@@ -6,7 +6,7 @@ echo   UBLOCK RMM - INSTALACAO DE SERVICO EM SEGUNDO PLANO
 echo ========================================================
 echo.
 
-:: 1. Verificar privil?gios de Administrador
+:: 1. Verificar privilégios de Administrador
 net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo [AVISO] Solicitando permissoes de Administrador para configurar a inicializacao automatica...
@@ -17,51 +17,60 @@ if %errorlevel% neq 0 (
 cd /d "%~dp0"
 
 if not exist "%~dp0ublock-agent.exe" (
-    echo [ERRO] O arquivo ublock-agent.exe nao foi encontrado na mesma pasta.
+    echo [ERRO] O arquivo ublock-agent.exe nao foi encontrado nesta pasta.
     pause
     exit /b 1
 )
 
-:: 2. Pasta oficial de instalacao permanente do Windows
+:: 2. Pasta permanente do Windows
 set "INSTALL_DIR=%ProgramFiles%\UblockAgent"
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
-echo [1/4] Copiando arquivos para %INSTALL_DIR%...
+echo [1/5] Encerrando processos anteriores se houver...
+taskkill /f /im "ublock-agent.exe" >nul 2>&1
+
+echo [2/5] Copiando arquivos para %INSTALL_DIR%...
 copy /y "%~dp0ublock-agent.exe" "%INSTALL_DIR%\ublock-agent.exe" >nul
 
-:: 3. Solicitar c?digo de pareamento se for primeira vez
-echo.
-set /p TOKEN="Cole o Codigo de Pareamento gerado no Painel Web: "
-
-if "%TOKEN%"=="" (
-    echo [ERRO] E necessario informar o codigo de pareamento na primeira instalacao!
-    pause
-    exit /b 1
+:: Se já houver state na pasta atual, copia também
+if exist "%~dp0agent\scripts\agent_state.json" (
+    copy /y "%~dp0agent\scripts\agent_state.json" "%INSTALL_DIR%\agent_state.json" >nul
+)
+if exist "%~dp0agent_state.json" (
+    copy /y "%~dp0agent_state.json" "%INSTALL_DIR%\agent_state.json" >nul
 )
 
-:: 4. Realizar primeiro pareamento e registro na nuvem
-echo.
-echo [2/4] Registrando computador no servidor central e sincronizando hardware...
-"%INSTALL_DIR%\ublock-agent.exe" -token "%TOKEN%" -api "https://ublock-api-fn7d.onrender.com/api/v1" < nul >nul 2>&1
+:: 3. Solicitar código de pareamento se for primeira vez e não tiver state salvo
+if not exist "%INSTALL_DIR%\agent_state.json" (
+    echo.
+    set /p TOKEN="Cole o Codigo de Pareamento gerado no Painel Web: "
+    if "%TOKEN%"=="" (
+        echo [ERRO] E necessario informar o codigo de pareamento na primeira instalacao!
+        pause
+        exit /b 1
+    )
+    echo [3/5] Registrando maquina no servidor central...
+    cd /d "%INSTALL_DIR%"
+    "%INSTALL_DIR%\ublock-agent.exe" -token "%TOKEN%" -api "https://ublock-api-fn7d.onrender.com/api/v1" < nul >nul 2>&1
+) else (
+    echo [3/5] Maquina ja possui registro salvo. Mantendo credenciais ativas.
+)
 
-:: 5. Criar script VBS para rodar 100% invisivel (sem janela preta de prompt)
-echo [3/4] Configurando execucao invisivel em segundo plano...
+:: 4. Criar script VBS para rodar 100% invisível em segundo plano
+echo [4/5] Configurando execucao invisivel em segundo plano...
 (
     echo Set WshShell = CreateObject^("WScript.Shell"^)
+    echo WshShell.CurrentDirectory = "%INSTALL_DIR%"
     echo WshShell.Run """" ^& "%INSTALL_DIR%\ublock-agent.exe" ^& """ -api https://ublock-api-fn7d.onrender.com/api/v1", 0, False
 ) > "%INSTALL_DIR%\silent-agent.vbs"
 
-:: 6. Criar Tarefa Agendada no Windows (Task Scheduler)
-:: Inicia no Boot da maquina (antes do logon), roda com usuario SYSTEM e reinicia se cair
-echo [4/4] Registrando inicializacao automatica 24h com o Windows...
-
-schtasks /delete /tn "UblockAgent" /f >nul 2>&1
-schtasks /create /tn "UblockAgent" /tr "wscript.exe \"%INSTALL_DIR%\silent-agent.vbs\"" /sc onlogon /rl highest /f >nul
-
-:: Registrar tambem no Run do Windows como garantia de redundancia
+:: 5. Criar inicialização automática permanente no Registro do Windows
+echo [5/5] Registrando inicializacao automatica 24h com o Windows...
 reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "UblockAgent" /t REG_SZ /d "wscript.exe \"%INSTALL_DIR%\silent-agent.vbs\"" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "UblockAgent" /t REG_SZ /d "wscript.exe \"%INSTALL_DIR%\silent-agent.vbs\"" /f >nul 2>&1
 
-:: 7. Iniciar o agente imediatamente em segundo plano
+:: Iniciar imediatamente em segundo plano
+cd /d "%INSTALL_DIR%"
 start "" wscript.exe "%INSTALL_DIR%\silent-agent.vbs"
 
 echo.
@@ -72,6 +81,6 @@ echo.
 echo   * O agente ja esta rodando agora mesmo em segundo plano.
 echo   * Nenhuma janela ficara aberta na tela do usuario.
 echo   * O Ublock iniciara automaticamente sempre que o PC ligar.
-echo   * Verifique o painel web: o computador ja deve constar ONLINE!
+echo   * Comandos de Bloqueio da Web serao executados nesta maquina!
 echo.
 timeout /t 5 >nul

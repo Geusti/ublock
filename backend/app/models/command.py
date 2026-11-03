@@ -23,6 +23,9 @@ class ActionTypeEnum(str, enum.Enum):
 
 class CommandStatusEnum(str, enum.Enum):
     PENDING = "PENDING"
+    EXECUTING = "EXECUTING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
     SUCCEEDED_SIMULATED = "SUCCEEDED_SIMULATED"
     FAILED_SIMULATED = "FAILED_SIMULATED"
 

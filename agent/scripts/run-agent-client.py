@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-NEXUS IT ASSET MANAGER / Ublock - Cliente de Teste do Agente Windows
-Executa o protocolo oficial do agente (Enrollment, Coleta de Hardware Real e Heartbeats em Segundo Plano).
-Compatível com Python 3.10+ sem bibliotecas externas.
+NEXUS IT ASSET MANAGER / Ublock - Agente Cliente Windows (Produção & Real Time)
+Executa telemetria real contínua, heartbeats e execução de comandos de bloqueio e contenção do painel.
 """
 
 import sys
@@ -15,8 +14,68 @@ import argparse
 import urllib.request
 import urllib.error
 import ctypes
+import subprocess
 
-STATE_FILE = os.path.join(os.path.dirname(__file__), "agent_state.json")
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_state.json")
+
+
+def execute_containment_action(action_type, target_username=None):
+    """
+    Executa a ação nativa real solicitada pelo administrador no Windows.
+    Retorna (succeeded: bool, message: str).
+    """
+    print(f"\n[EXECUCAO DE COMANDO] Recebida acao: {action_type} (Usuario: {target_username})")
+    
+    try:
+        if action_type == "EMERGENCY_LOCKDOWN":
+            # Bloqueia a estação de trabalho imediatamente via API nativa do Windows (LockWorkStation)
+            # e suspende o usuário da sessão
+            user32 = ctypes.windll.User32
+            res = user32.LockWorkStation()
+            if res:
+                return True, "Estacao de trabalho bloqueada com sucesso via LockWorkStation."
+            else:
+                # Fallback via rundll32
+                subprocess.run(["rundll32.exe", "user32.dll,LockWorkStation"], check=False)
+                return True, "Estacao bloqueada com sucesso via rundll32."
+
+        elif action_type == "END_USER_SESSION":
+            # Força o logoff do usuário imediatamente
+            subprocess.run(["shutdown.exe", "/l", "/f"], check=False)
+            return True, "Logoff da sessao do usuario disparado com sucesso."
+
+        elif action_type == "SUSPEND_LOCAL_ACCOUNT":
+            if not target_username:
+                target_username = os.getlogin() if hasattr(os, "getlogin") else "Usuario"
+            res = subprocess.run(["net", "user", target_username, "/active:no"], capture_output=True, text=True)
+            if res.returncode == 0:
+                return True, f"Conta local '{target_username}' desativada com sucesso."
+            else:
+                return False, f"Falha ao desativar conta '{target_username}': {res.stderr or res.stdout}"
+
+        elif action_type == "ISOLATE_DEVICE_NETWORK":
+            # Desativa os adaptadores de rede físicos ativos via PowerShell nativo
+            ps_cmd = "Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false"
+            res = subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True)
+            if res.returncode == 0:
+                return True, "Adaptadores de rede desativados com sucesso."
+            else:
+                return False, f"Falha ao desativar rede: {res.stderr or res.stdout}"
+
+        elif action_type == "REACTIVATE_LOCAL_ACCOUNT":
+            if not target_username:
+                target_username = os.getlogin() if hasattr(os, "getlogin") else "Usuario"
+            res = subprocess.run(["net", "user", target_username, "/active:yes"], capture_output=True, text=True)
+            if res.returncode == 0:
+                return True, f"Conta local '{target_username}' reativada com sucesso."
+            else:
+                return False, f"Falha ao reativar conta: {res.stderr or res.stdout}"
+
+        else:
+            return False, f"Tipo de acao '{action_type}' desconhecido."
+
+    except Exception as e:
+        return False, f"Excecao ao executar comando: {str(e)}"
 
 
 def get_system_uptime():
@@ -57,10 +116,10 @@ def get_memory_info():
             }
     except Exception:
         pass
-    # Fallback caso não seja Windows ou ocorra falha
+
     return {
-        "total_bytes": 17179869184,  # 16 GB
-        "available_bytes": 8589934592,  # 8 GB
+        "total_bytes": 17179869184,
+        "available_bytes": 8589934592,
         "usage_percent": 50.0
     }
 
@@ -133,13 +192,13 @@ def make_request(url, method="POST", data=None, headers=None):
     if headers is None:
         headers = {}
     headers["Content-Type"] = "application/json"
-    headers["User-Agent"] = "NexusAgent/1.0.0 (Windows Test Client)"
+    headers["User-Agent"] = "UblockAgent/1.0.0 (Windows Production Client)"
 
     body = json.dumps(data).encode("utf-8") if data else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=12) as response:
             res_body = response.read().decode("utf-8")
             return response.status, json.loads(res_body) if res_body else {}
     except urllib.error.HTTPError as e:
@@ -154,8 +213,11 @@ def make_request(url, method="POST", data=None, headers=None):
 
 
 def save_state(state):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2)
+    try:
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        print(f"[ERRO] Falha ao salvar estado em {STATE_FILE}: {e}")
 
 
 def load_state():
@@ -169,29 +231,30 @@ def load_state():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Cliente de Teste do Agente NEXUS / Ublock")
+    parser = argparse.ArgumentParser(description="Ublock RMM - Agente de Monitoramento Windows")
     parser.add_argument("-token", "--token", help="Código de pareamento gerado no painel")
     parser.add_argument("-api", "--api", default="https://ublock-api-fn7d.onrender.com/api/v1", help="URL base da API Ublock")
-    parser.add_argument("-interval", "--interval", type=int, default=30, help="Intervalo de heartbeat em segundos")
+    parser.add_argument("-interval", "--interval", type=int, default=15, help="Intervalo de heartbeat em segundos")
     args = parser.parse_args()
 
     api_url = args.api.rstrip("/")
     state = load_state()
 
     print("=" * 60)
-    print("  NEXUS IT ASSET MANAGER - AGENTE DE MONITORAMENTO CLIENTE ")
+    print("  UBLOCK RMM - AGENTE DE MONITORAMENTO CLIENTE ")
     print("=" * 60)
     print(f"API Central: {api_url}")
 
     # 1. Pareamento (Enrollment)
-    if args.token:
-        print(f"\n[1/3] Realizando pareamento com o código: {args.token}...")
+    if args.token and args.token.strip() != "":
+        token_clean = args.token.strip()
+        print(f"\n[1/3] Realizando pareamento com o código: {token_clean}...")
         agent_uuid = str(uuid.uuid4())
-        hostname = platform.node() or "WIN-CLIENT-TEST"
+        hostname = platform.node() or "WIN-CLIENT"
         os_ver = f"{platform.system()} {platform.release()} ({platform.version()})"
         
         enroll_payload = {
-            "enrollment_token": args.token.strip(),
+            "enrollment_token": token_clean,
             "agent_uuid": agent_uuid,
             "agent_version": "1.0.0",
             "hostname": hostname,
@@ -203,41 +266,36 @@ def main():
         status, resp = make_request(f"{api_url}/agent/enroll", data=enroll_payload)
         if status != 200:
             print(f"[ERRO] Falha no pareamento (HTTP {status}): {resp.get('detail')}")
-            return 1
+            # Se já tiver um estado salvo, não apaga
+            if not state:
+                return 1
+        else:
+            print("      Pareamento realizado com SUCESSO!")
+            state = {
+                "agent_uuid": agent_uuid,
+                "agent_key": resp["agent_key"],
+                "device_id": resp["device_id"],
+                "organization_id": resp["organization_id"],
+                "api_url": api_url
+            }
+            save_state(state)
 
-        print("      Pareamento realizado com SUCESSO!")
-        state = {
-            "agent_uuid": agent_uuid,
-            "agent_key": resp["agent_key"],
-            "device_id": resp["device_id"],
-            "organization_id": resp["organization_id"],
-            "api_url": api_url
-        }
-        save_state(state)
-    elif not state:
-        print("\n[AVISO] Nenhum agente pareado localizado.")
-        print("Para conectar um computador:")
-        print("1. Abra o painel web em http://localhost:5173")
-        print("2. Clique em 'Inventário' e abra o computador desejado")
-        print("3. Clique em 'Instalar / Parear Agente' e copie o código")
-        print(f"4. Execute: python {sys.argv[0]} -token SEU_CODIGO_AQUI\n")
-        
-        token_input = input("Cole o código de pareamento (ou pressione Enter para sair): ").strip()
-        if not token_input:
-            return 0
-        return main_with_token(token_input, api_url, args.interval)
+    if not state:
+        print("\n[ERRO] Nenhum agente pareado encontrado e nenhum token foi fornecido.")
+        print(f"Execute informando o token: {sys.argv[0]} -token SEU_TOKEN -api {api_url}")
+        return 1
 
     # 2. Coleta e Envio de Inventário Técnico Completo
     agent_key = state["agent_key"]
     agent_uuid = state["agent_uuid"]
     headers = {"X-Agent-Key": agent_key}
 
-    print("\n[2/3] Coletando especificações técnicas de hardware real da máquina...")
+    print("\n[2/3] Sincronizando especificações técnicas de hardware real com a nuvem...")
     mem_info = get_memory_info()
     disk_info = get_disk_info()
     net_info = get_network_info()
     uptime_sec = get_system_uptime()
-    cpu_model = platform.processor() or "Intel(R) Core(TM) i7 / AMD Ryzen"
+    cpu_model = platform.processor() or "Intel(R) Core(TM) / AMD Ryzen"
 
     inventory_payload = {
         "agent_uuid": agent_uuid,
@@ -263,17 +321,17 @@ def main():
 
     status, resp = make_request(f"{api_url}/agent/inventory", data=inventory_payload, headers=headers)
     if status == 200:
-        print("      Inventário técnico de hardware sincronizado com o painel!")
+        print("      Inventário técnico sincronizado com o painel!")
     elif status == 403:
         print(f"[BLOQUEIO] Agente REVOGADO pelo administrador: {resp.get('detail')}")
         return 1
     else:
-        print(f"[AVISO] Não foi possível enviar inventário (HTTP {status}): {resp.get('detail')}")
+        print(f"[AVISO] Resposta do inventário (HTTP {status}): {resp.get('detail')}")
 
-    # 3. Loop Contínuo de Heartbeats em Background
-    interval = args.interval
-    print(f"\n[3/3] Iniciando loop de monitoramento contínuo (Heartbeat a cada {interval}s)...")
-    print("Pressione Ctrl+C para pausar a comunicação (simula máquina ficando offline).\n")
+    # 3. Loop Contínuo de Heartbeats e Execução de Comandos Remotos
+    interval = args.interval or 15
+    print(f"\n[3/3] Monitoramento em Tempo Real ativo (Heartbeat a cada {interval}s)...")
+    print("      Aguardando comandos e mantendo o status ONLINE no painel.\n")
 
     count = 0
     while True:
@@ -295,29 +353,43 @@ def main():
 
         timestamp = time.strftime("%H:%M:%S")
         if status == 200:
-            print(f"[{timestamp}] [Heartbeat #{count:03d}] OK (ACK) -> Computador ONLINE | Uptime: {uptime_str}")
+            print(f"[{timestamp}] [Heartbeat #{count:03d}] OK -> ONLINE | Uptime: {uptime_str}")
+            
+            # Verifica se o administrador enviou comandos de bloqueio/contenção
+            pending_commands = resp.get("pending_commands", [])
+            for cmd in pending_commands:
+                cmd_id = cmd["id"]
+                action_type = cmd["action_type"]
+                target_user = cmd.get("target_username")
+                
+                print(f"[{timestamp}] -> EXECUTANDO COMANDO REMOTO: {action_type}...")
+                succeeded, msg = execute_containment_action(action_type, target_user)
+                print(f"[{timestamp}] -> Resultado: {msg}")
+                
+                # Reporta o resultado de volta para o servidor e auditoria
+                res_payload = {
+                    "agent_uuid": agent_uuid,
+                    "command_id": cmd_id,
+                    "succeeded": succeeded,
+                    "result_message": msg
+                }
+                make_request(f"{api_url}/agent/command-result", data=res_payload, headers=headers)
+
         elif status == 403:
-            print(f"\n[{timestamp}] [ALERTA DE SEGURANÇA - HTTP 403]")
-            print(f"O agente teve o ACESSO REVOGADO pelo administrador do painel web!")
+            print(f"\n[{timestamp}] [ALERTA - HTTP 403]")
+            print(f"O agente teve o ACESSO REVOGADO pelo administrador!")
             print(f"Motivo: {resp.get('detail')}")
-            print("Novas comunicações foram permanentemente bloqueadas no servidor.\n")
             break
         else:
-            print(f"[{timestamp}] [FALHA - HTTP {status}] {resp.get('detail')}")
+            print(f"[{timestamp}] [CONEXAO - HTTP {status}] {resp.get('detail')}")
 
         try:
             time.sleep(interval)
         except KeyboardInterrupt:
-            print("\n[PAUSA] Monitoramento interrompido pelo usuário.")
-            print("O computador passará a constar como OFFLINE no painel após o threshold configurado.")
+            print("\n[PAUSA] Monitoramento interrompido.")
             break
 
     return 0
-
-
-def main_with_token(token, api_url, interval):
-    sys.argv = [sys.argv[0], "-token", token, "-api", api_url, "-interval", str(interval)]
-    return main()
 
 
 if __name__ == "__main__":
