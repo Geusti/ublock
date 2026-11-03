@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 title Ublock - Instalador de Monitoramento em Background
 cls
 echo ========================================================
@@ -6,7 +7,7 @@ echo   UBLOCK RMM - INSTALACAO DE SERVICO EM SEGUNDO PLANO
 echo ========================================================
 echo.
 
-:: 1. Verificar privilégios de Administrador
+:: 1. Verificar privilegios de Administrador
 net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo [AVISO] Solicitando permissoes de Administrador para configurar a inicializacao automatica...
@@ -26,46 +27,53 @@ if not exist "%~dp0ublock-agent.exe" (
 set "INSTALL_DIR=%ProgramFiles%\UblockAgent"
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
-echo [1/5] Encerrando processos anteriores se houver...
+echo [1/4] Encerrando processos anteriores se houver...
 taskkill /f /im "ublock-agent.exe" >nul 2>&1
 
-echo [2/5] Copiando arquivos para %INSTALL_DIR%...
+echo [2/4] Copiando arquivos para %INSTALL_DIR%...
 copy /y "%~dp0ublock-agent.exe" "%INSTALL_DIR%\ublock-agent.exe" >nul
 
-:: Se já houver state na pasta atual, copia também
-if exist "%~dp0agent\scripts\agent_state.json" (
-    copy /y "%~dp0agent\scripts\agent_state.json" "%INSTALL_DIR%\agent_state.json" >nul
-)
-if exist "%~dp0agent_state.json" (
-    copy /y "%~dp0agent_state.json" "%INSTALL_DIR%\agent_state.json" >nul
-)
+:: 3. Solicitar codigo de pareamento
+echo.
+echo ========================================================
+echo   PAREAMENTO DO COMPUTADOR
+echo ========================================================
+echo.
+set /p TOKEN="Cole o Codigo de Pareamento gerado no Painel Web (ex: ublock_bulk_...): "
+set "TOKEN=!TOKEN: =!"
 
-:: 3. Solicitar código de pareamento se for primeira vez e não tiver state salvo
-if not exist "%INSTALL_DIR%\agent_state.json" (
-    echo.
-    set /p TOKEN="Cole o Codigo de Pareamento gerado no Painel Web: "
-    if "%TOKEN%"=="" (
+if "!TOKEN!"=="" (
+    if exist "%INSTALL_DIR%\agent_state.json" (
+        echo [INFO] Nenhum token digitado. Utilizando pareamento existente...
+    ) else (
         echo [ERRO] E necessario informar o codigo de pareamento na primeira instalacao!
         pause
         exit /b 1
     )
-    echo [3/5] Registrando maquina no servidor central...
-    cd /d "%INSTALL_DIR%"
-    "%INSTALL_DIR%\ublock-agent.exe" -token "%TOKEN%" -api "https://ublock-api-fn7d.onrender.com/api/v1" < nul >nul 2>&1
 ) else (
-    echo [3/5] Maquina ja possui registro salvo. Mantendo credenciais ativas.
+    echo.
+    echo [3/4] Registrando maquina no servidor central...
+    cd /d "%INSTALL_DIR%"
+    "%INSTALL_DIR%\ublock-agent.exe" -token "!TOKEN!" -api "https://ublock-api-fn7d.onrender.com/api/v1" < nul
+    if !errorlevel! neq 0 (
+        echo.
+        echo [ERRO] Falha ao parear com o servidor central.
+        echo Verifique sua conexao com a internet e se o token e valido.
+        pause
+        exit /b 1
+    )
 )
 
-:: 4. Criar script VBS para rodar 100% invisível em segundo plano
-echo [4/5] Configurando execucao invisivel em segundo plano...
+:: 4. Criar script VBS para rodar 100%% invisivel em segundo plano (24h)
+echo.
+echo [4/4] Configurando execucao invisivel e inicializacao automatica...
 (
     echo Set WshShell = CreateObject^("WScript.Shell"^)
     echo WshShell.CurrentDirectory = "%INSTALL_DIR%"
     echo WshShell.Run """" ^& "%INSTALL_DIR%\ublock-agent.exe" ^& """ -api https://ublock-api-fn7d.onrender.com/api/v1", 0, False
 ) > "%INSTALL_DIR%\silent-agent.vbs"
 
-:: 5. Criar inicialização automática permanente no Registro do Windows
-echo [5/5] Registrando inicializacao automatica 24h com o Windows...
+:: Registrar no Run (HKLM e HKCU) para iniciar 24h junto com o Windows
 reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "UblockAgent" /t REG_SZ /d "wscript.exe \"%INSTALL_DIR%\silent-agent.vbs\"" /f >nul 2>&1
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "UblockAgent" /t REG_SZ /d "wscript.exe \"%INSTALL_DIR%\silent-agent.vbs\"" /f >nul 2>&1
 
@@ -78,9 +86,9 @@ echo ========================================================
 echo   INSTALACAO CONCLUIDA COM SUCESSO!
 echo ========================================================
 echo.
-echo   * O agente ja esta rodando agora mesmo em segundo plano.
-echo   * Nenhuma janela ficara aberta na tela do usuario.
-echo   * O Ublock iniciara automaticamente sempre que o PC ligar.
-echo   * Comandos de Bloqueio da Web serao executados nesta maquina!
+echo   * O agente Ublock esta rodando em segundo plano.
+echo   * Ele iniciara automaticamente sempre que o computador ligar.
+echo   * Nenhuma janela ficara aberta na tela.
+echo   * Os comandos de Bloqueio e Telemetria estao ativos.
 echo.
-timeout /t 5 >nul
+pause
