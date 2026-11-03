@@ -239,12 +239,12 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
   const confirmRetire = async () => {
     if (!retiringDevice) return;
     try {
-      await api.retireDevice(retiringDevice.id);
-      setFeedback({ type: 'success', message: `Ativo '${retiringDevice.display_name}' retirado de uso com sucesso.` });
+      await api.deleteDevice(retiringDevice.id);
+      setFeedback({ type: 'success', message: `Computador '${retiringDevice.display_name}' excluído com sucesso do sistema.` });
       setRetiringDevice(null);
       fetchDevices();
     } catch (err: any) {
-      setFeedback({ type: 'error', message: err.message || 'Erro ao retirar ativo.' });
+      setFeedback({ type: 'error', message: err.message || 'Erro ao excluir computador.' });
     }
   };
 
@@ -475,16 +475,14 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
                           <Edit className="w-3.5 h-3.5" />
                         </button>
 
-                        {/* Soft Retire Device */}
-                        {device.status !== 'RETIRED' && (
-                          <button
-                            onClick={() => setRetiringDevice(device)}
-                            title="Retirar de uso"
-                            className="p-1.5 rounded text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 transition"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        {/* Excluir Computador */}
+                        <button
+                          onClick={() => setRetiringDevice(device)}
+                          title="Excluir computador definitivamente"
+                          className="p-1.5 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -712,21 +710,23 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
         </form>
       </Modal>
 
-      {/* Destructive Action Confirmation Modal */}
+      {/* Destructive Action Confirmation Modal - Permanent Delete */}
       {retiringDevice && (
         <Modal 
           isOpen={!!retiringDevice} 
           onClose={() => setRetiringDevice(null)} 
-          title="Confirmar Retirada de Ativo"
+          title="Excluir Computador Definitivamente"
         >
           <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-400" />
               <div>
-                <p className="font-semibold text-amber-200">Operação de Desativação Lógica</p>
+                <p className="font-semibold text-rose-200">Exclusão Permanente do Cadastro</p>
                 <p className="mt-1 leading-relaxed">
-                  O computador <strong>{retiringDevice.display_name} ({retiringDevice.hostname})</strong> será marcado com o status <strong>RETIRADO</strong>.
-                  O histórico de telemetria e a trilha de auditoria serão preservados integralmente.
+                  O computador <strong>{retiringDevice.display_name} ({retiringDevice.hostname})</strong> será <strong>removido definitivamente</strong> da plataforma.
+                </p>
+                <p className="mt-2 text-rose-300/80">
+                  Ao excluir, você poderá cadastrar ou parear este mesmo computador novamente do zero a qualquer momento como um novo equipamento.
                 </p>
               </div>
             </div>
@@ -742,9 +742,9 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
               <button
                 type="button"
                 onClick={confirmRetire}
-                className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium"
+                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-medium shadow-md shadow-rose-600/30"
               >
-                Confirmar Retirada
+                Excluir Definitivamente
               </button>
             </div>
           </div>

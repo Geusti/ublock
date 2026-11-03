@@ -126,6 +126,12 @@ class ApiClient {
     });
   }
 
+  async deleteDevice(id: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/devices/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   async retireDevice(id: string): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/devices/${id}`, {
       method: 'DELETE',

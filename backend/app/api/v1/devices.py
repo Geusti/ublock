@@ -1,6 +1,7 @@
 import uuid
 import math
 import secrets
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, Path, status
@@ -25,6 +26,19 @@ from app.services.audit_service import AuditService
 from app.core.exceptions import NotFoundException, ConflictException, BadRequestException
 
 router = APIRouter(prefix="/devices", tags=["Devices"])
+
+
+def get_next_asset_tag(db: Session, organization_id: uuid.UUID) -> str:
+    """Calculates the next sequential asset tag UB-XXXX for the organization."""
+    devices = db.query(Device).filter(Device.organization_id == organization_id).all()
+    nums = []
+    for d in devices:
+        if d.asset_tag:
+            m = re.match(r"^UB-(\d+)$", d.asset_tag.strip())
+            if m:
+                nums.append(int(m.group(1)))
+    next_num = (max(nums) + 1) if nums else 1
+    return f"UB-{next_num:04d}"
 
 
 def format_device_out(device: Device) -> DeviceOut:
@@ -145,14 +159,19 @@ def create_device(
     db: Session = Depends(get_db)
 ):
     """Registers a new computer manually into the inventory."""
-    # Check asset_tag uniqueness if provided
-    if payload.asset_tag:
+    # Auto-generate next asset tag UB-0001, UB-0002... if not informed
+    asset_tag = payload.asset_tag.strip() if payload.asset_tag else get_next_asset_tag(db, current_admin.organization_id)
+
+    # Check asset_tag uniqueness
+    if asset_tag:
         existing = db.query(Device).filter(
             Device.organization_id == current_admin.organization_id,
-            Device.asset_tag == payload.asset_tag.strip()
+            Device.asset_tag == asset_tag
         ).first()
-        if existing:
+        if existing and payload.asset_tag:
             raise ConflictException(f"Etiqueta de patrimônio '{payload.asset_tag}' já está em uso nesta organização.")
+        elif existing:
+            asset_tag = f"UB-{uuid.uuid4().hex[:6].upper()}" 
 
     # Validate employee if assigned
     if payload.assigned_employee_id:
@@ -181,7 +200,7 @@ def create_device(
         manufacturer=payload.manufacturer,
         model=payload.model,
         serial_number=payload.serial_number,
-        asset_tag=payload.asset_tag.strip() if payload.asset_tag else None,
+        asset_tag=asset_tag,
         assigned_employee_id=payload.assigned_employee_id,
         department_id=payload.department_id,
         local_ip=payload.local_ip,
@@ -337,33 +356,39 @@ def update_device(
 
 
 @router.delete("/{device_id}", response_model=MessageResponse)
-def retire_device(
+def delete_device(
     device_id: uuid.UUID = Path(...),
     current_admin: AdminUser = Depends(require_technician_or_higher),
     db: Session = Depends(get_db)
 ):
-    """Retires a computer (soft-delete / status=RETIRED) to preserve audit and history."""
+    """
+    Exclui literalmente o computador do banco de dados (cascade).
+    Permite que o mesmo computador seja cadastrado novamente do zero.
+    """
     device = db.query(Device).filter(
         Device.id == device_id,
         Device.organization_id == current_admin.organization_id
     ).first()
     if not device:
-        raise NotFoundException("Dispositivo não encontrado.")
+        raise NotFoundException("Dispositivo não encontrado nesta organização.")
 
-    device.status = DeviceStatusEnum.RETIRED.value
+    device_name = device.display_name or device.hostname
+    hostname = device.hostname
+
+    # Deleta definitivamente o dispositivo e todos os seus registros em cascata
+    db.delete(device)
     db.commit()
 
     AuditService.log_event(
         db=db,
         organization_id=current_admin.organization_id,
-        action="DEVICE_RETIRE",
+        action="DEVICE_DELETE",
         outcome="SUCCESS",
         actor_admin_id=current_admin.id,
-        device_id=device.id,
-        details={"hostname": device.hostname, "status": "RETIRED"}
+        details={"hostname": hostname, "display_name": device_name, "deleted": True}
     )
 
-    return MessageResponse(message=f"Dispositivo '{device.display_name}' retirado de uso com sucesso.")
+    return MessageResponse(message=f"Dispositivo '{device_name}' excluído com sucesso do sistema.")
 
 
 @router.get("/{device_id}/accounts", response_model=List[DeviceAccountOut])
