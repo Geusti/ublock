@@ -89,7 +89,10 @@ def list_devices(
     query = (
         db.query(Device)
         .options(joinedload(Device.assigned_employee), joinedload(Device.department))
-        .filter(Device.organization_id == current_admin.organization_id)
+        .filter(
+            Device.organization_id == current_admin.organization_id,
+            Device.status != DeviceStatusEnum.RETIRED.value
+        )
     )
 
     if os_family:

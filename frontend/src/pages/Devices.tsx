@@ -238,13 +238,21 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
 
   const confirmRetire = async () => {
     if (!retiringDevice) return;
+    const targetId = retiringDevice.id;
+    const targetName = retiringDevice.display_name;
+
+    // Remove imediatamente da tela (atualização otimista instantânea)
+    setDevices(prev => prev.filter(d => d.id !== targetId));
+    setTotal(prev => Math.max(0, prev - 1));
+    setRetiringDevice(null);
+
     try {
-      await api.deleteDevice(retiringDevice.id);
-      setFeedback({ type: 'success', message: `Computador '${retiringDevice.display_name}' excluído com sucesso do sistema.` });
-      setRetiringDevice(null);
+      await api.deleteDevice(targetId);
+      setFeedback({ type: 'success', message: `Computador '${targetName}' excluído com sucesso do sistema.` });
       fetchDevices();
     } catch (err: any) {
       setFeedback({ type: 'error', message: err.message || 'Erro ao excluir computador.' });
+      fetchDevices();
     }
   };
 
