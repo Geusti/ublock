@@ -11,7 +11,7 @@ from app.api.v1.router import api_v1_router
 async def lifespan(app: FastAPI):
     # Ensure tables are created when running in SQLite development mode
     if settings.DATABASE_URL.startswith("sqlite"):
-        Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=engine) 
     yield
 
 
