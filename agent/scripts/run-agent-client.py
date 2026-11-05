@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-NEXUS IT ASSET MANAGER / Ublock - Agente Cliente Windows (Produção & Real Time)
-Executa telemetria real contínua, heartbeats e execução de comandos de bloqueio e contenção do painel.
-"""
-
 import sys
 import os
 import json
@@ -13,34 +7,33 @@ import platform
 import argparse
 import urllib.request
 import urllib.error
+import ssl
 import ctypes
 import subprocess
 
-STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_state.json")
+# Localização do arquivo de credenciais
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+STATE_FILE = os.path.join(BASE_DIR, "agent_state.json")
 
 
 def execute_containment_action(action_type, target_username=None):
-    """
-    Executa a ação nativa real solicitada pelo administrador no Windows.
-    Retorna (succeeded: bool, message: str).
-    """
+    """Executa a ação nativa real solicitada pelo administrador no Windows."""
     print(f"\n[EXECUCAO DE COMANDO] Recebida acao: {action_type} (Usuario: {target_username})")
-    
     try:
         if action_type == "EMERGENCY_LOCKDOWN":
-            # Bloqueia a estação de trabalho imediatamente via API nativa do Windows (LockWorkStation)
-            # e suspende o usuário da sessão
             user32 = ctypes.windll.User32
             res = user32.LockWorkStation()
             if res:
                 return True, "Estacao de trabalho bloqueada com sucesso via LockWorkStation."
             else:
-                # Fallback via rundll32
                 subprocess.run(["rundll32.exe", "user32.dll,LockWorkStation"], check=False)
                 return True, "Estacao bloqueada com sucesso via rundll32."
 
         elif action_type == "END_USER_SESSION":
-            # Força o logoff do usuário imediatamente
             subprocess.run(["shutdown.exe", "/l", "/f"], check=False)
             return True, "Logoff da sessao do usuario disparado com sucesso."
 
@@ -54,7 +47,6 @@ def execute_containment_action(action_type, target_username=None):
                 return False, f"Falha ao desativar conta '{target_username}': {res.stderr or res.stdout}"
 
         elif action_type == "ISOLATE_DEVICE_NETWORK":
-            # Desativa os adaptadores de rede físicos ativos via PowerShell nativo
             ps_cmd = "Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false"
             res = subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True)
             if res.returncode == 0:
@@ -79,7 +71,6 @@ def execute_containment_action(action_type, target_username=None):
 
 
 def get_system_uptime():
-    """Retorna o tempo de atividade do sistema em segundos."""
     try:
         kernel32 = ctypes.windll.kernel32
         ticks = kernel32.GetTickCount64()
@@ -89,7 +80,6 @@ def get_system_uptime():
 
 
 def get_memory_info():
-    """Coleta informações de memória RAM física do Windows via Win32 API."""
     try:
         class MEMORYSTATUSEX(ctypes.Structure):
             _fields_ = [
@@ -125,7 +115,6 @@ def get_memory_info():
 
 
 def get_disk_info():
-    """Coleta unidades de disco lógicas do sistema."""
     drives = []
     try:
         import string
@@ -135,7 +124,6 @@ def get_disk_info():
         for letter in string.ascii_uppercase:
             drive_path = f"{letter}:\\"
             drive_type = kernel32.GetDriveTypeW(drive_path)
-            # DRIVE_FIXED = 3
             if drive_type == 3:
                 free_bytes = c_ulonglong()
                 total_bytes = c_ulonglong()
@@ -167,7 +155,6 @@ def get_disk_info():
 
 
 def get_network_info():
-    """Coleta o IP local e endereço de rede."""
     import socket
     interfaces = []
     try:
@@ -188,7 +175,6 @@ def get_network_info():
 
 
 def make_request(url, method="POST", data=None, headers=None):
-    """Executa requisições HTTPS/HTTP com urllib."""
     if headers is None:
         headers = {}
     headers["Content-Type"] = "application/json"
@@ -197,19 +183,26 @@ def make_request(url, method="POST", data=None, headers=None):
     body = json.dumps(data).encode("utf-8") if data else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     
-    try:
-        with urllib.request.urlopen(req, timeout=12) as response:
-            res_body = response.read().decode("utf-8")
-            return response.status, json.loads(res_body) if res_body else {}
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode("utf-8")
+    # Suporte para certificados SSL modernos em qualquer Windows
+    ctx = ssl.create_default_context()
+    
+    for attempt in range(3):
         try:
-            parsed = json.loads(err_body)
-        except Exception:
-            parsed = {"detail": err_body}
-        return e.code, parsed
-    except Exception as e:
-        return 0, {"detail": str(e)}
+            with urllib.request.urlopen(req, timeout=20, context=ctx) as response:
+                res_body = response.read().decode("utf-8")
+                return response.status, json.loads(res_body) if res_body else {}
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8")
+            try:
+                parsed = json.loads(err_body)
+            except Exception:
+                parsed = {"detail": err_body}
+            return e.code, parsed
+        except Exception as e:
+            if attempt == 2:
+                return 0, {"detail": str(e)}
+            time.sleep(2)
+    return 0, {"detail": "Falha na comunicacao apos tentativas."}
 
 
 def save_state(state):
@@ -217,7 +210,7 @@ def save_state(state):
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
     except Exception as e:
-        print(f"[ERRO] Falha ao salvar estado em {STATE_FILE}: {e}")
+        print(f"[ERRO] Falha ao salvar credencial em {STATE_FILE}: {e}")
 
 
 def load_state():
@@ -232,7 +225,7 @@ def load_state():
 
 def main():
     parser = argparse.ArgumentParser(description="Ublock RMM - Agente de Monitoramento Windows")
-    parser.add_argument("-token", "--token", help="Código de pareamento gerado no painel")
+    parser.add_argument("-token", "--token", help="Codigo de pareamento gerado no painel")
     parser.add_argument("-api", "--api", default="https://ublock-api-fn7d.onrender.com/api/v1", help="URL base da API Ublock")
     parser.add_argument("-interval", "--interval", type=int, default=15, help="Intervalo de heartbeat em segundos")
     args = parser.parse_args()
@@ -244,11 +237,12 @@ def main():
     print("  UBLOCK RMM - AGENTE DE MONITORAMENTO CLIENTE ")
     print("=" * 60)
     print(f"API Central: {api_url}")
+    print(f"Arquivo de Credenciais: {STATE_FILE}")
 
     # 1. Pareamento (Enrollment)
     if args.token and args.token.strip() != "":
         token_clean = args.token.strip()
-        print(f"\n[1/3] Realizando pareamento com o código: {token_clean}...")
+        print(f"\n[1/3] Realizando pareamento com o codigo: {token_clean}...")
         agent_uuid = str(uuid.uuid4())
         hostname = platform.node() or "WIN-CLIENT"
         os_ver = f"{platform.system()} {platform.release()} ({platform.version()})"
@@ -265,8 +259,7 @@ def main():
 
         status, resp = make_request(f"{api_url}/agent/enroll", data=enroll_payload)
         if status != 200:
-            print(f"[ERRO] Falha no pareamento (HTTP {status}): {resp.get('detail')}")
-            # Se já tiver um estado salvo, não apaga
+            print(f"\n[ERRO] Falha no pareamento (HTTP {status}): {resp.get('detail')}")
             if not state:
                 return 1
         else:
@@ -290,7 +283,7 @@ def main():
     agent_uuid = state["agent_uuid"]
     headers = {"X-Agent-Key": agent_key}
 
-    print("\n[2/3] Sincronizando especificações técnicas de hardware real com a nuvem...")
+    print("\n[2/3] Sincronizando especificacoes tecnicas de hardware real com a nuvem...")
     mem_info = get_memory_info()
     disk_info = get_disk_info()
     net_info = get_network_info()
@@ -314,19 +307,19 @@ def main():
             "arch": "amd64"
         },
         "manufacturer": "Microsoft / OEM",
-        "model": "Estação de Trabalho Windows",
+        "model": "Estacao de Trabalho Windows",
         "serial_number": "SN-WIN-" + agent_uuid[:8].upper(),
         "uptime_seconds": uptime_sec
     }
 
     status, resp = make_request(f"{api_url}/agent/inventory", data=inventory_payload, headers=headers)
     if status == 200:
-        print("      Inventário técnico sincronizado com o painel!")
+        print("      Inventario tecnico sincronizado com o painel!")
     elif status == 403:
         print(f"[BLOQUEIO] Agente REVOGADO pelo administrador: {resp.get('detail')}")
         return 1
     else:
-        print(f"[AVISO] Resposta do inventário (HTTP {status}): {resp.get('detail')}")
+        print(f"[AVISO] Resposta do inventario (HTTP {status}): {resp.get('detail')}")
 
     # 3. Loop Contínuo de Heartbeats e Execução de Comandos Remotos
     interval = args.interval or 15
@@ -355,7 +348,6 @@ def main():
         if status == 200:
             print(f"[{timestamp}] [Heartbeat #{count:03d}] OK -> ONLINE | Uptime: {uptime_str}")
             
-            # Verifica se o administrador enviou comandos de bloqueio/contenção
             pending_commands = resp.get("pending_commands", [])
             for cmd in pending_commands:
                 cmd_id = cmd["id"]
@@ -366,7 +358,6 @@ def main():
                 succeeded, msg = execute_containment_action(action_type, target_user)
                 print(f"[{timestamp}] -> Resultado: {msg}")
                 
-                # Reporta o resultado de volta para o servidor e auditoria
                 res_payload = {
                     "agent_uuid": agent_uuid,
                     "command_id": cmd_id,
