@@ -52,7 +52,11 @@ if "!TOKEN!"=="" (
     )
 ) else (
     echo.
-    echo [3/4] Registrando maquina no servidor central...
+    echo [3/4] Removendo registro anterior e pareando maquina com a nuvem...
+    if exist "%INSTALL_DIR%\agent_state.json" del /f /q "%INSTALL_DIR%\agent_state.json" >nul 2>&1
+    if exist "%~dp0agent_state.json" del /f /q "%~dp0agent_state.json" >nul 2>&1
+    if exist "%~dp0agent\scripts\agent_state.json" del /f /q "%~dp0agent\scripts\agent_state.json" >nul 2>&1
+    
     cd /d "%INSTALL_DIR%"
     "%INSTALL_DIR%\ublock-agent.exe" -token "!TOKEN!" -api "https://ublock-api-fn7d.onrender.com/api/v1" < nul
     if !errorlevel! neq 0 (
