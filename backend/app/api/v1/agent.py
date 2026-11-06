@@ -130,13 +130,16 @@ def enroll_agent(payload: AgentEnrollRequest, db: Session = Depends(get_db)):
         agent.registered_at = now
         agent.revoked_at = None
 
-    # Update device metadata
+    # Update device metadata and reactivate status if previously retired
+    device.status = DeviceStatusEnum.ONLINE.value
     device.agent_version = payload.agent_version
     device.os_family = payload.os_family.upper()
     if payload.os_version:
         device.os_version = payload.os_version
     device.last_seen_at = now
     device.is_demo = False  # Now receiving real agent reports!
+    if not device.asset_tag:
+        device.asset_tag = get_next_asset_tag(db, token_record.organization_id)
 
     db.commit()
     db.refresh(agent)
@@ -192,6 +195,8 @@ def receive_heartbeat(
     # Update device timestamp
     device = db.query(Device).filter(Device.id == agent.device_id).first()
     if device:
+        if device.status == DeviceStatusEnum.RETIRED.value:
+            device.status = DeviceStatusEnum.ONLINE.value
         device.last_seen_at = now
         device.is_demo = False
         if payload.agent_version:
