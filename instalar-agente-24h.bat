@@ -58,7 +58,7 @@ if "!TOKEN!"=="" (
     if exist "%~dp0agent\scripts\agent_state.json" del /f /q "%~dp0agent\scripts\agent_state.json" >nul 2>&1
     
     cd /d "%INSTALL_DIR%"
-    "%INSTALL_DIR%\ublock-agent.exe" -token "!TOKEN!" -api "https://ublock-api-fn7d.onrender.com/api/v1" < nul
+    "%INSTALL_DIR%\ublock-agent.exe" -token "!TOKEN!" -api "https://ublock-api-fn7d.onrender.com/api/v1" --enroll-only
     if !errorlevel! neq 0 (
         echo.
         echo [ERRO] Falha ao parear com o servidor central.

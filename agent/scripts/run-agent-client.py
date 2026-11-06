@@ -213,6 +213,15 @@ def save_state(state):
         print(f"[ERRO] Falha ao salvar credencial em {STATE_FILE}: {e}")
 
 
+def remove_state():
+    try:
+        if os.path.exists(STATE_FILE):
+            os.remove(STATE_FILE)
+            print(f"[LIMPEZA] Arquivo de credenciais local apagado: {STATE_FILE}")
+    except Exception as e:
+        pass
+
+
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
@@ -228,6 +237,7 @@ def main():
     parser.add_argument("-token", "--token", help="Codigo de pareamento gerado no painel")
     parser.add_argument("-api", "--api", default="https://ublock-api-fn7d.onrender.com/api/v1", help="URL base da API Ublock")
     parser.add_argument("-interval", "--interval", type=int, default=15, help="Intervalo de heartbeat em segundos")
+    parser.add_argument("--enroll-only", action="store_true", help="Realiza apenas o pareamento e inventario inicial e encerra com sucesso")
     args = parser.parse_args()
 
     api_url = args.api.rstrip("/")
@@ -242,6 +252,10 @@ def main():
     # 1. Pareamento (Enrollment)
     if args.token and args.token.strip() != "":
         token_clean = args.token.strip()
+        # Se um novo token foi fornecido, limpa qualquer estado antigo
+        remove_state()
+        state = None
+
         print(f"\n[1/3] Realizando pareamento com o codigo: {token_clean}...")
         agent_uuid = str(uuid.uuid4())
         hostname = platform.node() or "WIN-CLIENT"
@@ -260,8 +274,7 @@ def main():
         status, resp = make_request(f"{api_url}/agent/enroll", data=enroll_payload)
         if status != 200:
             print(f"\n[ERRO] Falha no pareamento (HTTP {status}): {resp.get('detail')}")
-            if not state:
-                return 1
+            return 1
         else:
             print("      Pareamento realizado com SUCESSO!")
             state = {
@@ -315,11 +328,26 @@ def main():
     status, resp = make_request(f"{api_url}/agent/inventory", data=inventory_payload, headers=headers)
     if status == 200:
         print("      Inventario tecnico sincronizado com o painel!")
-    elif status == 403:
-        print(f"[BLOQUEIO] Agente REVOGADO pelo administrador: {resp.get('detail')}")
+    elif status == 401 or status == 403:
+        print(f"\n[ALERTA - HTTP {status}] {resp.get('detail')}")
+        print("[DISPOSITIVO REMOVIDO] Este computador foi excluído ou o acesso foi revogado no painel administrativo.")
+        remove_state()
         return 1
     else:
         print(f"[AVISO] Resposta do inventario (HTTP {status}): {resp.get('detail')}")
+
+    # Se chamado com --enroll-only (como no instalador automatizado), envia primeiro heartbeat e encerra
+    if args.enroll_only:
+        hb_payload = {
+            "agent_uuid": agent_uuid,
+            "uptime_seconds": uptime_sec,
+            "agent_version": "1.0.0",
+            "error_message": None
+        }
+        make_request(f"{api_url}/agent/heartbeat", data=hb_payload, headers=headers)
+        print("\n[3/3] Computador registrado com status ONLINE!")
+        print(f"      Credenciais salvas com seguranca em: {STATE_FILE}")
+        return 0
 
     # 3. Loop Contínuo de Heartbeats e Execução de Comandos Remotos
     interval = args.interval or 15
@@ -366,10 +394,10 @@ def main():
                 }
                 make_request(f"{api_url}/agent/command-result", data=res_payload, headers=headers)
 
-        elif status == 403:
-            print(f"\n[{timestamp}] [ALERTA - HTTP 403]")
-            print(f"O agente teve o ACESSO REVOGADO pelo administrador!")
-            print(f"Motivo: {resp.get('detail')}")
+        elif status == 401 or status == 403:
+            print(f"\n[{timestamp}] [ALERTA - HTTP {status}]")
+            print(f"[DISPOSITIVO REMOVIDO] Computador excluído do inventário ou acesso revogado: {resp.get('detail')}")
+            remove_state()
             break
         else:
             print(f"[{timestamp}] [CONEXAO - HTTP {status}] {resp.get('detail')}")

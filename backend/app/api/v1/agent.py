@@ -194,13 +194,18 @@ def receive_heartbeat(
 
     # Update device timestamp
     device = db.query(Device).filter(Device.id == agent.device_id).first()
-    if device:
-        if device.status == DeviceStatusEnum.RETIRED.value:
-            device.status = DeviceStatusEnum.ONLINE.value
-        device.last_seen_at = now
-        device.is_demo = False
-        if payload.agent_version:
-            device.agent_version = payload.agent_version
+    if not device:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Dispositivo não encontrado ou excluído do inventário."
+        )
+
+    if device.status == DeviceStatusEnum.RETIRED.value:
+        device.status = DeviceStatusEnum.ONLINE.value
+    device.last_seen_at = now
+    device.is_demo = False
+    if payload.agent_version:
+        device.agent_version = payload.agent_version
 
     # Check for pending security / containment commands queued for this device
     pending_cmds = (
@@ -303,6 +308,12 @@ def receive_inventory(
 
     # Update device specs
     device = db.query(Device).filter(Device.id == agent.device_id).first()
+    if not device:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Dispositivo não encontrado ou excluído do inventário."
+        )
+
     if device:
         device.last_seen_at = now
         device.is_demo = False

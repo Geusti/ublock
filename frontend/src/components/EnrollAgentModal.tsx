@@ -59,7 +59,7 @@ export const EnrollAgentModal: React.FC<EnrollAgentModalProps> = ({
   };
 
   const apiUrl = (import.meta.env.VITE_API_BASE_URL || `http://${window.location.hostname}:8000/api/v1`).replace(/\/$/, '');
-  const cliCommand = tokenData ? `nexus-agent.exe -enroll ${tokenData.enrollment_token} -api ${apiUrl}` : '';
+  const cliCommand = tokenData ? `.\\ublock-agent.exe -token "${tokenData.enrollment_token}" -api "${apiUrl}"` : '';
   const psCommand = tokenData ? `.\\scripts\\install-service.ps1 -Token "${tokenData.enrollment_token}" -ApiUrl "${apiUrl}"` : '';
 
   return (
@@ -183,34 +183,37 @@ export const EnrollAgentModal: React.FC<EnrollAgentModalProps> = ({
               </div>
             </div>
 
-            {/* PowerShell / CLI Command */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1.5 uppercase tracking-wider">
-                <Terminal className="w-3.5 h-3.5 text-blue-400" />
-                Comando Automático (PowerShell Administrador)
-              </label>
-              <div className="relative">
-                <pre className="bg-[#0B1120] border border-[#24334C] rounded-lg p-3 text-[11px] font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap break-all">
-                  {psCommand}
-                </pre>
-                <button
-                  onClick={() => copyToClipboard(psCommand, false)}
-                  className="absolute top-2 right-2 px-2.5 py-1 rounded bg-[#151F32] border border-[#24334C] hover:bg-[#1f2d45] text-slate-300 hover:text-white text-[11px] font-medium flex items-center gap-1 transition"
-                >
-                  {copiedCommand ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  {copiedCommand ? 'Copiado' : 'Copiar'}
-                </button>
+            {/* Instruções de Instalação */}
+            <div className="bg-[#0B1120] border border-[#24334C] rounded-xl p-3.5 space-y-2 text-xs">
+              <div className="font-semibold text-slate-200 flex items-center gap-1.5">
+                <Terminal className="w-4 h-4 text-emerald-400" />
+                Como conectar este computador ao painel:
               </div>
+              <ol className="list-decimal list-inside text-slate-300 space-y-1.5 pl-1 text-[11px]">
+                <li>Abra a pasta do Ublock no seu computador.</li>
+                <li>Clique com o botão direito em <strong className="text-white bg-slate-800 px-1.5 py-0.5 rounded font-mono">instalar-agente-24h.bat</strong> e selecione <em>Executar como Administrador</em>.</li>
+                <li>Cole o código acima quando solicitado e pressione <kbd className="px-1.5 py-0.5 rounded bg-slate-700 text-white font-mono text-[10px]">Enter</kbd>.</li>
+                <li>O computador aparecerá instantaneamente nesta tabela com status <span className="text-emerald-400 font-semibold">ONLINE</span>!</li>
+              </ol>
             </div>
 
             {/* Direct CLI */}
             <div>
               <label className="block text-[11px] text-slate-400 mb-1">
-                Ou registre diretamente pelo executável:
+                Ou execute diretamente via terminal (PowerShell / Prompt de Comando):
               </label>
-              <pre className="bg-[#0B1120] border border-[#24334C] rounded-lg p-2.5 text-[11px] font-mono text-slate-400 overflow-x-auto select-all">
-                {cliCommand}
-              </pre>
+              <div className="relative">
+                <pre className="bg-[#0B1120] border border-[#24334C] rounded-lg p-2.5 text-[11px] font-mono text-slate-300 overflow-x-auto select-all">
+                  {cliCommand}
+                </pre>
+                <button
+                  onClick={() => copyToClipboard(cliCommand, false)}
+                  className="absolute top-1.5 right-1.5 px-2 py-1 rounded bg-[#151F32] border border-[#24334C] hover:bg-[#1f2d45] text-slate-300 hover:text-white text-[10px] font-medium flex items-center gap-1 transition"
+                >
+                  {copiedCommand ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  {copiedCommand ? 'Copiado' : 'Copiar'}
+                </button>
+              </div>
             </div>
 
             <div className="flex justify-end pt-2">

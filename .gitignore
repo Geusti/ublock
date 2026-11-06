@@ -54,3 +54,5 @@ Thumbs.db
 # Agent state & client test credentials
 agent_state.json
 
+
+*.spec
