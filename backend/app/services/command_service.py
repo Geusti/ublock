@@ -19,6 +19,8 @@ class CommandService:
         action_type: str,
         target_account_id: Optional[uuid.UUID] = None,
         reason: Optional[str] = None,
+        parameters: Optional[dict] = None,
+        new_password: Optional[str] = None,
     ) -> Command:
         """Creates a strictly simulated command in the database and records audit log."""
         # 1. Verify device belongs to user's organization
@@ -40,37 +42,49 @@ class CommandService:
             if not target_account:
                 raise NotFoundException("Conta de usuário local não encontrada para este dispositivo")
 
-        # 3. Create simulated command record
+        # 3. Handle offboarding password reset parameters
+        params = dict(parameters) if parameters else {}
+        if new_password:
+            params["new_password"] = new_password
+        elif action_type == ActionTypeEnum.RESET_PASSWORD_AND_LOGOFF.value and "new_password" not in params:
+            import secrets
+            params["new_password"] = f"Ubk@{secrets.token_hex(3).upper()}!2026"
+
+        # 4. Create command record (REAL execution mode for offboarding containment)
+        cmd_mode = "REAL" if action_type == ActionTypeEnum.RESET_PASSWORD_AND_LOGOFF.value else "SIMULATION"
+
         command = Command(
             organization_id=admin.organization_id,
             device_id=device.id,
             target_account_id=target_account.id if target_account else None,
             action_type=action_type,
-            mode="SIMULATION",
+            mode=cmd_mode,
             status=CommandStatusEnum.PENDING.value,
             requested_by=admin.id,
             reason=reason,
+            parameters=params,
         )
         db.add(command)
         db.commit()
         db.refresh(command)
 
-        # 4. Audit creation
+        # 5. Audit creation
         AuditService.log_event(
             db=db,
             organization_id=admin.organization_id,
-            action=f"CREATE_SIMULATED_COMMAND:{action_type}",
-            outcome="PENDING_SIMULATED",
+            action=f"CREATE_COMMAND:{action_type}",
+            outcome="PENDING",
             actor_admin_id=admin.id,
             device_id=device.id,
             command_id=command.id,
             details={
                 "action_type": action_type,
-                "mode": "SIMULATION",
+                "mode": cmd_mode,
                 "hostname": device.hostname,
                 "target_account": target_account.username if target_account else None,
                 "reason": reason,
-                "safe_guard_note": "Ação estritamente simulada em banco de dados; nenhum comando de sistema operacional foi emitido.",
+                "new_password": params.get("new_password"),
+                "safe_guard_note": "Ordem de comando registrada para execução no agente cliente." if cmd_mode == "REAL" else "Ação estritamente simulada em banco de dados.",
             }
         )
 

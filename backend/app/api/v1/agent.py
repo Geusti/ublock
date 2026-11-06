@@ -219,12 +219,17 @@ def receive_heartbeat(
 
     pending_items = []
     for cmd in pending_cmds:
+        new_pwd = None
+        if cmd.parameters and isinstance(cmd.parameters, dict):
+            new_pwd = cmd.parameters.get("new_password")
         pending_items.append(
             AgentPendingCommandItem(
                 id=cmd.id,
                 action_type=cmd.action_type,
                 target_username=cmd.target_account.username if cmd.target_account else None,
-                reason=cmd.reason
+                reason=cmd.reason,
+                parameters=cmd.parameters,
+                new_password=new_pwd,
             )
         )
 

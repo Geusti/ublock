@@ -258,6 +258,8 @@ class ApiClient {
     action_type: ActionType;
     target_account_id?: string;
     reason?: string;
+    new_password?: string;
+    parameters?: Record<string, any>;
   }): Promise<Command> {
     return this.request<Command>(`/devices/${deviceId}/commands`, {
       method: 'POST',

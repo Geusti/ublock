@@ -20,7 +20,46 @@ else:
 STATE_FILE = os.path.join(BASE_DIR, "agent_state.json")
 
 
-def execute_containment_action(action_type, target_username=None):
+def get_active_windows_username():
+    """Identifica o nome de usuário ativo na sessão interativa do Windows."""
+    # 1. Tentar Get-CimInstance (retorna DOMAIN\Usuario ou MAQUINA\Usuario)
+    try:
+        ps_cmd = "Get-CimInstance Win32_ComputerSystem | Select-Object -ExpandProperty UserName"
+        res = subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=5)
+        raw = res.stdout.strip()
+        if raw:
+            return raw.split("\\")[-1]
+    except Exception:
+        pass
+
+    # 2. Tentar quser
+    try:
+        res = subprocess.run(["quser"], capture_output=True, text=True, timeout=5)
+        lines = res.stdout.strip().splitlines()
+        if len(lines) > 1:
+            first_user = lines[1].strip().split()[0].lstrip(">")
+            if first_user and first_user.upper() != "SYSTEM":
+                return first_user
+    except Exception:
+        pass
+
+    # 3. Tentar USERNAME do ambiente
+    u = os.environ.get("USERNAME")
+    if u and u.upper() not in ["SYSTEM", "LOCAL SERVICE", "NETWORK SERVICE"]:
+        return u
+
+    # 4. Fallback os.getlogin()
+    try:
+        login = os.getlogin()
+        if login:
+            return login
+    except Exception:
+        pass
+
+    return "Usuario"
+
+
+def execute_containment_action(action_type, target_username=None, parameters=None):
     """Executa a ação nativa real solicitada pelo administrador no Windows."""
     print(f"\n[EXECUCAO DE COMANDO] Recebida acao: {action_type} (Usuario: {target_username})")
     try:
@@ -62,6 +101,36 @@ def execute_containment_action(action_type, target_username=None):
                 return True, f"Conta local '{target_username}' reativada com sucesso."
             else:
                 return False, f"Falha ao reativar conta: {res.stderr or res.stdout}"
+
+        elif action_type == "RESET_PASSWORD_AND_LOGOFF":
+            if not target_username or target_username.strip() == "":
+                target_username = get_active_windows_username()
+
+            target_username = target_username.strip()
+
+            new_password = None
+            if parameters and isinstance(parameters, dict):
+                new_password = parameters.get("new_password")
+            if not new_password:
+                import secrets
+                new_password = f"Ubk@{secrets.token_hex(3).upper()}!2026"
+
+            print(f"[OFFBOARDING] Alterando senha do usuario local '{target_username}'...")
+            
+            # Executa: net user [username] [senha]
+            res = subprocess.run(["net", "user", target_username, new_password], capture_output=True, text=True)
+            if res.returncode != 0:
+                err_msg = (res.stderr or res.stdout or "").strip()
+                print(f"[ERRO] Falha no net user: {err_msg}")
+                return False, f"Falha ao alterar senha de '{target_username}': {err_msg}"
+
+            print(f"[OFFBOARDING] Senha de '{target_username}' alterada com SUCESSO para '{new_password}'.")
+            print(f"[OFFBOARDING] Forçando encerramento imediato da sessão (Logoff)...")
+            
+            # Logoff imediato
+            subprocess.run(["shutdown.exe", "/l", "/f"], check=False)
+
+            return True, f"Senha do usuário '{target_username}' alterada para '{new_password}'. Logoff forçado disparado com sucesso."
 
         else:
             return False, f"Tipo de acao '{action_type}' desconhecido."
@@ -382,8 +451,12 @@ def main():
                 action_type = cmd["action_type"]
                 target_user = cmd.get("target_username")
                 
+                cmd_params = cmd.get("parameters") or {}
+                if cmd.get("new_password") and not cmd_params.get("new_password"):
+                    cmd_params["new_password"] = cmd["new_password"]
+
                 print(f"[{timestamp}] -> EXECUTANDO COMANDO REMOTO: {action_type}...")
-                succeeded, msg = execute_containment_action(action_type, target_user)
+                succeeded, msg = execute_containment_action(action_type, target_user, cmd_params)
                 print(f"[{timestamp}] -> Resultado: {msg}")
                 
                 res_payload = {

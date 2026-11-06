@@ -73,9 +73,14 @@ export const DeviceDetail: React.FC<DeviceDetailProps> = ({ device: initialDevic
     action_type: ActionType;
     target_account_id?: string;
     reason: string;
+    new_password?: string;
   }) => {
     await api.createSimulatedCommand(device.id, data);
-    alert(`Comando de contenção '${data.action_type}' enviado com sucesso! O agente local executará no computador em segundos.`);
+    if (data.action_type === 'RESET_PASSWORD_AND_LOGOFF') {
+      alert(`Comando de Offboarding disparado! Nova senha do Windows registrada para a TI: ${data.new_password}`);
+    } else {
+      alert(`Comando de contenção '${data.action_type}' enviado com sucesso! O agente local executará no computador em segundos.`);
+    }
     reloadData();
   };
 

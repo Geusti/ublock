@@ -101,9 +101,16 @@ export type ActionType =
   | 'REACTIVATE_LOCAL_ACCOUNT'
   | 'END_USER_SESSION'
   | 'ISOLATE_DEVICE_NETWORK'
-  | 'EMERGENCY_LOCKDOWN';
+  | 'EMERGENCY_LOCKDOWN'
+  | 'RESET_PASSWORD_AND_LOGOFF';
 
-export type CommandStatus = 'PENDING' | 'SUCCEEDED_SIMULATED' | 'FAILED_SIMULATED';
+export type CommandStatus = 
+  | 'PENDING' 
+  | 'EXECUTING'
+  | 'SUCCEEDED' 
+  | 'FAILED' 
+  | 'SUCCEEDED_SIMULATED' 
+  | 'FAILED_SIMULATED';
 
 export interface Command {
   id: string;
@@ -119,6 +126,8 @@ export interface Command {
   requester_name: string | null;
   reason: string | null;
   result_message: string | null;
+  parameters?: Record<string, any> | null;
+  new_password?: string | null;
   created_at: string;
   completed_at: string | null;
 }

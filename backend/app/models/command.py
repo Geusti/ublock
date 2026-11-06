@@ -2,7 +2,7 @@ import uuid
 import enum
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import String, ForeignKey, DateTime, Uuid, Text, Index
+from sqlalchemy import String, ForeignKey, DateTime, Uuid, Text, Index, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.base import utc_now
@@ -19,6 +19,7 @@ class ActionTypeEnum(str, enum.Enum):
     END_USER_SESSION = "END_USER_SESSION"
     ISOLATE_DEVICE_NETWORK = "ISOLATE_DEVICE_NETWORK"
     EMERGENCY_LOCKDOWN = "EMERGENCY_LOCKDOWN"
+    RESET_PASSWORD_AND_LOGOFF = "RESET_PASSWORD_AND_LOGOFF"
 
 
 class CommandStatusEnum(str, enum.Enum):
@@ -46,6 +47,7 @@ class Command(Base):
     requested_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("admin_users.id"), nullable=False)
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     result_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    parameters: Mapped[Optional[dict]] = mapped_column(JSON, default=dict, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

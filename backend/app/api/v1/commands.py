@@ -18,6 +18,10 @@ router = APIRouter(tags=["Commands"])
 
 
 def format_command_out(cmd: Command) -> CommandOut:
+    new_pwd = None
+    if cmd.parameters and isinstance(cmd.parameters, dict):
+        new_pwd = cmd.parameters.get("new_password")
+
     return CommandOut(
         id=cmd.id,
         organization_id=cmd.organization_id,
@@ -32,6 +36,8 @@ def format_command_out(cmd: Command) -> CommandOut:
         requester_name=cmd.requester.full_name if cmd.requester else None,
         reason=cmd.reason,
         result_message=cmd.result_message,
+        parameters=cmd.parameters,
+        new_password=new_pwd,
         created_at=cmd.created_at,
         completed_at=cmd.completed_at
     )
@@ -101,7 +107,9 @@ def create_device_command(
         device_id=device_id,
         action_type=payload.action_type.value,
         target_account_id=payload.target_account_id,
-        reason=payload.reason
+        reason=payload.reason,
+        parameters=payload.parameters,
+        new_password=payload.new_password,
     )
     # Reload with relationships
     db.refresh(cmd)

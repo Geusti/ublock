@@ -50,6 +50,8 @@ class AgentPendingCommandItem(BaseModel):
     action_type: str
     target_username: Optional[str] = None
     reason: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    new_password: Optional[str] = None
 
 
 class AgentHeartbeatResponse(BaseModel):

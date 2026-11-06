@@ -226,13 +226,21 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
     action_type: ActionType;
     target_account_id?: string;
     reason: string;
+    new_password?: string;
   }) => {
     if (!emergencyDevice) return;
     await api.createSimulatedCommand(emergencyDevice.id, data);
-    setFeedback({
-      type: 'success',
-      message: `Ação de contenção '${data.action_type}' registrada em modo SIMULADO com sucesso.`,
-    });
+    if (data.action_type === 'RESET_PASSWORD_AND_LOGOFF') {
+      setFeedback({
+        type: 'success',
+        message: `Comando de Offboarding disparado! Senha registrada para a TI: ${data.new_password} (o agente executará no Windows em segundos).`,
+      });
+    } else {
+      setFeedback({
+        type: 'success',
+        message: `Ação de contenção '${data.action_type}' enviada com sucesso para o computador ${emergencyDevice.hostname}.`,
+      });
+    }
     fetchDevices();
   };
 

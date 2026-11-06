@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 from app.models.command import ActionTypeEnum, CommandStatusEnum
 
@@ -9,6 +9,8 @@ class CommandCreate(BaseModel):
     action_type: ActionTypeEnum
     target_account_id: Optional[UUID] = None
     reason: Optional[str] = Field(None, max_length=500)
+    parameters: Optional[Dict[str, Any]] = None
+    new_password: Optional[str] = Field(None, max_length=128)
 
 
 class CommandSimulateResult(BaseModel):
@@ -30,6 +32,8 @@ class CommandOut(BaseModel):
     requester_name: Optional[str] = None
     reason: Optional[str] = None
     result_message: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    new_password: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
 
