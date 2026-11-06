@@ -22,7 +22,7 @@ app = FastAPI(
         "Ambiente de monitoramento remoto seguro para governança de endpoints da Ubook.\n"
         "Fase 1: Módulo administrativo, gestão de inventário e fila de comandos em modo estritamente simulado."
     ),
-    version="1.0.0",
+    version="1.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
@@ -59,7 +59,7 @@ def root_health():
     return {
         "status": "online",
         "app": settings.APP_NAME,
-        "version": "1.0.0",
+        "version": "1.1.0",
         "mode": "SIMULATION_SAFE"
     }
 
