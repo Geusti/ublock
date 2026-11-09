@@ -41,8 +41,7 @@ export const EmergencyActionModal: React.FC<EmergencyActionModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isHighImpact = selectedAction === 'EMERGENCY_LOCKDOWN' || selectedAction === 'RESET_PASSWORD_AND_LOGOFF';
-  const requiresAccount = selectedAction === 'SUSPEND_LOCAL_ACCOUNT' || selectedAction === 'REACTIVATE_LOCAL_ACCOUNT';
+  const isHighImpact = selectedAction === 'RESET_PASSWORD_AND_LOGOFF';
 
   const handleExecute = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,11 +49,6 @@ export const EmergencyActionModal: React.FC<EmergencyActionModalProps> = ({
 
     if (!reason.trim()) {
       setError('Por favor, informe a justificativa de segurança.');
-      return;
-    }
-
-    if (requiresAccount && !targetAccountId && accounts.length > 0) {
-      setError('Selecione a conta de usuário alvo da ação.');
       return;
     }
 
@@ -127,12 +121,12 @@ export const EmergencyActionModal: React.FC<EmergencyActionModalProps> = ({
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
             Selecione o Tipo de Ação
           </label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {/* NOVO: Alterar Senha e Deslogar (Offboarding) */}
+          <div className="grid grid-cols-1 gap-2.5">
+            {/* Alterar Senha e Deslogar (Offboarding) */}
             <button
               type="button"
               onClick={() => setSelectedAction('RESET_PASSWORD_AND_LOGOFF')}
-              className={`p-3 rounded-lg border text-left flex items-start gap-3 transition col-span-1 md:col-span-2 ${
+              className={`p-3 rounded-lg border text-left flex items-start gap-3 transition ${
                 selectedAction === 'RESET_PASSWORD_AND_LOGOFF'
                   ? 'border-amber-500 bg-amber-500/10 text-white ring-1 ring-amber-500'
                   : 'border-[#24334C] bg-[#0B1120] text-slate-300 hover:border-slate-600'
@@ -141,29 +135,13 @@ export const EmergencyActionModal: React.FC<EmergencyActionModalProps> = ({
               <KeyRound className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
               <div>
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-amber-300">Alterar Senha e Deslogar (Offboarding / Demissão)</p>
+                  <p className="text-sm font-semibold text-amber-300">Alterar Senha e Deslogar</p>
                   <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">Recomendado TI</span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">Altera a senha do usuário local do Windows via <code className="text-amber-300/90 font-mono">net user %username%</code> e força logoff imediato. A senha fica salva no painel para que a equipe de TI possa efetuar login.</p>
               </div>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setSelectedAction('EMERGENCY_LOCKDOWN')}
-              className={`p-3 rounded-lg border text-left flex items-start gap-3 transition ${
-                selectedAction === 'EMERGENCY_LOCKDOWN'
-                  ? 'border-rose-500 bg-rose-500/10 text-white ring-1 ring-rose-500'
-                  : 'border-[#24334C] bg-[#0B1120] text-slate-300 hover:border-slate-600'
-              }`}
-            >
-              <ShieldAlert className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-semibold text-rose-300">Bloquear Estação (Lockdown)</p>
-                <p className="text-xs text-slate-400">Bloqueia a tela de imediato com LockWorkStation.</p>
-              </div>
-            </button>
-
+            {/* Encerrar Sessão Ativa */}
             <button
               type="button"
               onClick={() => setSelectedAction('END_USER_SESSION')}
@@ -180,35 +158,20 @@ export const EmergencyActionModal: React.FC<EmergencyActionModalProps> = ({
               </div>
             </button>
 
+            {/* Reativar Conta Local */}
             <button
               type="button"
-              onClick={() => setSelectedAction('SUSPEND_LOCAL_ACCOUNT')}
+              onClick={() => setSelectedAction('REACTIVATE_LOCAL_ACCOUNT')}
               className={`p-3 rounded-lg border text-left flex items-start gap-3 transition ${
-                selectedAction === 'SUSPEND_LOCAL_ACCOUNT'
-                  ? 'border-blue-500 bg-blue-500/10 text-white'
+                selectedAction === 'REACTIVATE_LOCAL_ACCOUNT'
+                  ? 'border-emerald-500 bg-emerald-500/10 text-white'
                   : 'border-[#24334C] bg-[#0B1120] text-slate-300 hover:border-slate-600'
               }`}
             >
-              <Lock className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+              <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-medium">Desativar Conta Local</p>
-                <p className="text-xs text-slate-400">Desativa o login da conta (net user /active:no).</p>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setSelectedAction('ISOLATE_DEVICE_NETWORK')}
-              className={`p-3 rounded-lg border text-left flex items-start gap-3 transition ${
-                selectedAction === 'ISOLATE_DEVICE_NETWORK'
-                  ? 'border-blue-500 bg-blue-500/10 text-white'
-                  : 'border-[#24334C] bg-[#0B1120] text-slate-300 hover:border-slate-600'
-              }`}
-            >
-              <WifiOff className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium">Isolar da Rede</p>
-                <p className="text-xs text-slate-400">Desativa adaptadores de rede físicos e Wi-Fi.</p>
+                <p className="text-sm font-medium">Reativar Conta Local</p>
+                <p className="text-xs text-slate-400">Reabilita o login local do usuário no endpoint.</p>
               </div>
             </button>
           </div>
@@ -220,7 +183,7 @@ export const EmergencyActionModal: React.FC<EmergencyActionModalProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
                 <KeyRound className="w-4 h-4" />
-                Nova Senha Temporária do Windows (Para acesso da TI)
+                Nova Senha Temporária (Para acesso da TI)
               </label>
               <button
                 type="button"
@@ -250,39 +213,6 @@ export const EmergencyActionModal: React.FC<EmergencyActionModalProps> = ({
                 {copiedPassword ? 'Copiada' : 'Copiar'}
               </button>
             </div>
-
-            <div className="text-[11px] text-amber-200/90 leading-relaxed bg-[#0B1120]/70 p-3 rounded-lg border border-amber-500/20">
-              <p>
-                <strong>⚡ Procedimento Automatizado:</strong> O agente executará no Windows o comando:
-              </p>
-              <p className="font-mono text-amber-300 text-[10px] mt-1 bg-black/40 p-1.5 rounded">
-                net user %username% {newPassword} &amp;&amp; shutdown.exe /l /f
-              </p>
-              <p className="mt-1.5 text-slate-300">
-                O colaborador será desconectado no mesmo instante e não poderá mais entrar. A senha acima ficará gravada no banco de dados e visível na aba <strong>Fila de Comandos</strong> para que a equipe de TI utilize quando recuperar o equipamento.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Account select if required */}
-        {requiresAccount && (
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
-              Conta Local Alvo
-            </label>
-            <select
-              value={targetAccountId}
-              onChange={(e) => setTargetAccountId(e.target.value)}
-              className="w-full bg-[#0B1120] border border-[#24334C] rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-            >
-              <option value="">Selecione uma conta detectada...</option>
-              {accounts.map(acc => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.username} ({acc.account_status}) {acc.is_demo ? '[DEMO]' : ''}
-                </option>
-              ))}
-            </select>
           </div>
         )}
 
