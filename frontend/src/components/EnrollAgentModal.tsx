@@ -65,7 +65,7 @@ export const EnrollAgentModal: React.FC<EnrollAgentModalProps> = ({
   const getCommandLine = () => {
     switch (activeOsTab) {
       case 'WINDOWS':
-        return `.\\ublock-agent.exe -token "${tokenStr}" -api "${apiUrl}"`;
+        return `.\\instalar-agente-24h.bat "${tokenStr}"`;
       case 'LINUX':
         return `sudo bash instalar-agente-linux.sh "${tokenStr}"`;
       case 'MACOS':
