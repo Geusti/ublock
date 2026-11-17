@@ -733,7 +733,7 @@ async def remote_desktop_loop(api_url: str, device_id: str, agent_key: str):
 
 def start_remote_desktop_background(api_url: str, device_id: str, agent_key: str):
     """Dispara o motor de controle remoto em uma thread assíncrona separada"""
-    if not HAS_REMOTE_DESKTOP:
+    if not HAS_REMOTE_DESKTOP or not device_id or not agent_key:
         return
 
     def runner():
@@ -835,6 +835,7 @@ def main():
     # 2. Coleta e Envio de Inventário Técnico Completo
     agent_key = state["agent_key"]
     agent_uuid = state["agent_uuid"]
+    device_id = state.get("device_id")
     headers = {"X-Agent-Key": agent_key}
 
     print("\n[2/3] Sincronizando especificacoes tecnicas de hardware real com a nuvem...")
