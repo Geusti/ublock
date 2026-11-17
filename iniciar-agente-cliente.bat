@@ -47,8 +47,22 @@ if "!TOKEN!"=="" (
         exit /b 1
     )
     "%~dp0ublock-agent.exe" -api "https://ublock-api-fn7d.onrender.com/api/v1"
+    if !errorlevel! neq 0 (
+        if exist "%~dp0backend\venv\Scripts\python.exe" (
+            echo.
+            echo [FALLBACK NATIVO] Executando agente via interpretador Python com assinatura digital confiavel...
+            "%~dp0backend\venv\Scripts\python.exe" "%~dp0agent\scripts\run-agent-client.py" -api "https://ublock-api-fn7d.onrender.com/api/v1"
+        )
+    )
 ) else (
     "%~dp0ublock-agent.exe" -token "!TOKEN!" -api "https://ublock-api-fn7d.onrender.com/api/v1"
+    if !errorlevel! neq 0 (
+        if exist "%~dp0backend\venv\Scripts\python.exe" (
+            echo.
+            echo [FALLBACK NATIVO] Executando agente via interpretador Python com assinatura digital confiavel...
+            "%~dp0backend\venv\Scripts\python.exe" "%~dp0agent\scripts\run-agent-client.py" -token "!TOKEN!" -api "https://ublock-api-fn7d.onrender.com/api/v1"
+        )
+    )
 )
 
 echo.
