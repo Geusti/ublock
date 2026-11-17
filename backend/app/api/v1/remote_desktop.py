@@ -124,7 +124,7 @@ async def ws_viewer(websocket: WebSocket, device_id: str, token: str = Query(...
     role = payload.get("role")
     user_org_id = payload.get("org_id")
 
-    if role not in ["TECHNICIAN", "ADMIN"]:
+    if role not in ["SUPER_ADMIN", "TECHNICIAN", "ADMIN"]:
         await websocket.send_json({"type": "error", "message": "Perfil sem permissão para controle remoto."})
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
