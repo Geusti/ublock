@@ -4,12 +4,14 @@ import { api } from '../services/api';
 import { StatusBadge } from '../components/StatusBadge';
 import { OSBadge } from '../components/OSBadge';
 import { EmergencyActionModal } from '../components/EmergencyActionModal';
+import { RemoteDesktopModal } from '../components/RemoteDesktopModal';
 import { EnrollAgentModal } from '../components/EnrollAgentModal';
 import { 
   ArrowLeft, 
   Cpu, 
   HardDrive, 
   ShieldAlert, 
+  Monitor,
   User, 
   Users, 
   Clock, 
@@ -39,6 +41,7 @@ export const DeviceDetail: React.FC<DeviceDetailProps> = ({ device: initialDevic
   const [agentStatus, setAgentStatus] = useState<DeviceAgentStatus | null>(null);
   const [activeTab, setActiveTab] = useState<'agent' | 'accounts' | 'telemetry' | 'commands'>('agent');
   const [isEmergencyOpen, setIsEmergencyOpen] = useState(false);
+  const [isRemoteOpen, setIsRemoteOpen] = useState(false);
   const [isEnrollOpen, setIsEnrollOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
 
@@ -217,6 +220,14 @@ export const DeviceDetail: React.FC<DeviceDetailProps> = ({ device: initialDevic
               {revoking ? 'Revogando...' : 'Revogar Agente'}
             </button>
           )}
+
+          <button
+            onClick={() => setIsRemoteOpen(true)}
+            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-600/25 transition"
+          >
+            <Monitor className="w-4 h-4" />
+            Acesso Remoto (Desktop)
+          </button>
 
           <button
             onClick={() => setIsEmergencyOpen(true)}
@@ -711,6 +722,13 @@ export const DeviceDetail: React.FC<DeviceDetailProps> = ({ device: initialDevic
           </table>
         </div>
       )}
+
+      {/* Remote Desktop Modal */}
+      <RemoteDesktopModal
+        isOpen={isRemoteOpen}
+        onClose={() => setIsRemoteOpen(false)}
+        device={device}
+      />
 
       {/* Emergency Modal */}
       <EmergencyActionModal
