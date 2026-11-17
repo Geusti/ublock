@@ -4,6 +4,7 @@ import { api } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
+  token: string | null;
   loading: boolean;
   login: (email: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -14,12 +15,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('ublock_token'));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const initAuth = async () => {
-      const token = localStorage.getItem('ublock_token');
-      if (token) {
+      const storedToken = localStorage.getItem('ublock_token');
+      if (storedToken) {
+        setToken(storedToken);
         try {
           const userData = await api.getMe();
           setUser(userData);
@@ -27,6 +30,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } catch {
           localStorage.removeItem('ublock_token');
           localStorage.removeItem('ublock_user');
+          setToken(null);
           setUser(null);
         }
       }
@@ -41,6 +45,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const res = await api.login(email, pass);
       localStorage.setItem('ublock_token', res.access_token);
+      setToken(res.access_token);
       const userData = await api.getMe();
       setUser(userData);
       localStorage.setItem('ublock_user', JSON.stringify(userData));
@@ -55,12 +60,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch {
       // ignore logout network errors
     } finally {
+      localStorage.removeItem('ublock_token');
+      localStorage.removeItem('ublock_user');
+      setToken(null);
       setUser(null);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

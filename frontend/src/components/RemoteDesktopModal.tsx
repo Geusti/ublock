@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Device } from '../types';
+import { useAuth } from '../context/AuthContext';
 import { 
   X, 
   Maximize2, 
@@ -23,6 +24,7 @@ export const RemoteDesktopModal: React.FC<RemoteDesktopModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const { token: contextToken } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -39,17 +41,38 @@ export const RemoteDesktopModal: React.FC<RemoteDesktopModalProps> = ({
   const bytesCountRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
 
+  // Busca do token em múltiplos armazenamentos com validação estrita
+  const getAuthToken = (): string => {
+    if (contextToken && contextToken.trim().length > 15) return contextToken.trim();
+    const candidateKeys = ['ublock_token', 'token', 'access_token', 'jwt', 'auth_token'];
+    for (const key of candidateKeys) {
+      const val = localStorage.getItem(key);
+      if (val && val.trim().length > 15) return val.trim();
+    }
+    for (const key of candidateKeys) {
+      const val = sessionStorage.getItem(key);
+      if (val && val.trim().length > 15) return val.trim();
+    }
+    return '';
+  };
+
   useEffect(() => {
     if (!isOpen || !device) return;
 
     setStatus('connecting');
     setErrorMessage(null);
 
+    const token = getAuthToken();
+    if (!token) {
+      setStatus('error');
+      setErrorMessage('Token de autenticação não encontrado na sessão. Por favor, encerre e faça login novamente no painel.');
+      return;
+    }
+
     // Identificar URL base do WebSocket
     const apiUrl = import.meta.env.VITE_API_BASE_URL || 'https://ublock-api-fn7d.onrender.com/api/v1';
     const wsProto = apiUrl.startsWith('https') ? 'wss:' : 'ws:';
     const hostAndPath = apiUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const token = localStorage.getItem('ublock_token') || localStorage.getItem('token') || '';
 
     const wsUrl = `${wsProto}//${hostAndPath}/remote-desktop/ws/viewer/${device.id}?token=${encodeURIComponent(token)}`;
 
@@ -108,13 +131,18 @@ export const RemoteDesktopModal: React.FC<RemoteDesktopModalProps> = ({
       }
     };
 
-    ws.onclose = () => {
-      setStatus('disconnected');
+    ws.onclose = (event) => {
+      if (event.code === 1008) {
+        setStatus('error');
+        setErrorMessage('Acesso negado pelo servidor (Políticas PSI-001/PSI-004): Token inválido ou perfil sem autorização para controlar este dispositivo.');
+      } else {
+        setStatus((prev) => (prev === 'error' ? 'error' : 'disconnected'));
+      }
     };
 
     ws.onerror = () => {
       setStatus('error');
-      setErrorMessage('Falha ao conectar ao servidor de relay.');
+      setErrorMessage('Falha ao conectar ao servidor de relay remoto.');
     };
 
     // Medidor de FPS e Banda
@@ -336,6 +364,27 @@ export const RemoteDesktopModal: React.FC<RemoteDesktopModalProps> = ({
                     : 'O computador precisa estar ligado e com o agente Ublock ativo em segundo plano para transmitir a tela.'
                 )}
               </p>
+
+              {status === 'error' && (
+                <div className="mt-4 flex items-center justify-center gap-3">
+                  <button
+                    onClick={onClose}
+                    className="px-4 py-2 rounded-lg bg-[#24334C] hover:bg-[#334155] text-slate-200 text-xs font-medium transition"
+                  >
+                    Fechar
+                  </button>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('ublock_token');
+                      localStorage.removeItem('ublock_user');
+                      window.location.href = '/login';
+                    }}
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-lg shadow-blue-500/20 transition"
+                  >
+                    Fazer Login Novamente
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

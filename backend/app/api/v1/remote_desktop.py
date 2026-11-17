@@ -113,8 +113,13 @@ async def ws_agent(websocket: WebSocket, device_id: str, key: str = Query(...)):
 async def ws_viewer(websocket: WebSocket, device_id: str, token: str = Query(...)):
     await websocket.accept()
 
+    # Limpar possivel prefixo Bearer ou espacos (PSI-001)
+    clean_token = token.strip()
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
     # 1. Validar Token JWT (PSI-001)
-    payload = decode_token(token)
+    payload = decode_token(clean_token)
     if not payload:
         await websocket.send_json({"type": "error", "message": "Token de autenticação inválido ou expirado."})
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
@@ -133,7 +138,12 @@ async def ws_viewer(websocket: WebSocket, device_id: str, token: str = Query(...
     db = SessionLocal()
     try:
         device = db.query(Device).filter(Device.id == uuid.UUID(device_id)).first()
-        if not device or str(device.organization_id) != str(user_org_id):
+        if not device:
+            await websocket.send_json({"type": "error", "message": "Dispositivo não encontrado."})
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        if role != "SUPER_ADMIN" and str(device.organization_id) != str(user_org_id):
             await websocket.send_json({"type": "error", "message": "Acesso não autorizado a este dispositivo."})
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
@@ -152,7 +162,7 @@ async def ws_viewer(websocket: WebSocket, device_id: str, token: str = Query(...
         db.close()
 
     if device_id not in sessions:
-        sessions[device_id] = {"agent": None, "viewers": [], "org_id": user_org_id}
+        sessions[device_id] = {"agent": None, "viewers": [], "org_id": device.organization_id}
 
     sessions[device_id]["viewers"].append(websocket)
     logger.info(f"👤 [Tecnico Conectado ao Desktop] Admin ID: {user_id} -> Device: {device_id}")
@@ -193,15 +203,18 @@ async def ws_viewer(websocket: WebSocket, device_id: str, token: str = Query(...
         # Trilha de Auditoria (PSI-003): Registrar encerramento da sessão
         db_audit = SessionLocal()
         try:
-            AuditService.log_event(
-                db=db_audit,
-                organization_id=uuid.UUID(user_org_id),
-                action="REMOTE_DESKTOP_SESSION_END",
-                outcome="SUCCESS",
-                actor_admin_id=uuid.UUID(user_id) if user_id else None,
-                device_id=uuid.UUID(device_id),
-                details={"ended_at": datetime.now(timezone.utc).isoformat()}
-            )
+            device_obj = db_audit.query(Device).filter(Device.id == uuid.UUID(device_id)).first()
+            target_org_id = device_obj.organization_id if device_obj else (uuid.UUID(user_org_id) if user_org_id else None)
+            if target_org_id:
+                AuditService.log_event(
+                    db=db_audit,
+                    organization_id=target_org_id,
+                    action="REMOTE_DESKTOP_SESSION_END",
+                    outcome="SUCCESS",
+                    actor_admin_id=uuid.UUID(user_id) if user_id else None,
+                    device_id=uuid.UUID(device_id),
+                    details={"ended_at": datetime.now(timezone.utc).isoformat()}
+                )
         except Exception as e:
             logger.error(f"Erro ao registrar auditoria de encerramento remoto: {e}")
         finally:
