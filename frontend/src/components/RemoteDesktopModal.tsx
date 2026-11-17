@@ -48,10 +48,10 @@ export const RemoteDesktopModal: React.FC<RemoteDesktopModalProps> = ({
     // Identificar URL base do WebSocket
     const apiUrl = import.meta.env.VITE_API_BASE_URL || 'https://ublock-api-fn7d.onrender.com/api/v1';
     const wsProto = apiUrl.startsWith('https') ? 'wss:' : 'ws:';
-    const host = apiUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const token = localStorage.getItem('token') || '';
+    const hostAndPath = apiUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const token = localStorage.getItem('ublock_token') || localStorage.getItem('token') || '';
 
-    const wsUrl = `${wsProto}//${host}/remote-desktop/ws/viewer/${device.id}?token=${encodeURIComponent(token)}`;
+    const wsUrl = `${wsProto}//${hostAndPath}/remote-desktop/ws/viewer/${device.id}?token=${encodeURIComponent(token)}`;
 
     const ws = new WebSocket(wsUrl);
     ws.binaryType = 'blob';

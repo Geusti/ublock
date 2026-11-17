@@ -139,7 +139,7 @@ async def ws_viewer(websocket: WebSocket, device_id: str, token: str = Query(...
             return
 
         # 3. Trilha de Auditoria (PSI-003): Registrar início de sessão remota
-        AuditService.log(
+        AuditService.log_event(
             db=db,
             organization_id=device.organization_id,
             action="REMOTE_DESKTOP_SESSION_START",
@@ -193,7 +193,7 @@ async def ws_viewer(websocket: WebSocket, device_id: str, token: str = Query(...
         # Trilha de Auditoria (PSI-003): Registrar encerramento da sessão
         db_audit = SessionLocal()
         try:
-            AuditService.log(
+            AuditService.log_event(
                 db=db_audit,
                 organization_id=uuid.UUID(user_org_id),
                 action="REMOTE_DESKTOP_SESSION_END",
