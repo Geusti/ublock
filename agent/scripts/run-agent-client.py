@@ -10,6 +10,18 @@ import urllib.request
 import urllib.error
 import ssl
 import subprocess
+import threading
+import io
+
+# Dependências opcionais do motor de tela remoto (disponível quando compilado com suporte)
+try:
+    import asyncio
+    import websockets
+    import mss
+    from PIL import Image
+    HAS_REMOTE_DESKTOP = True
+except ImportError:
+    HAS_REMOTE_DESKTOP = False
 
 # Localização do arquivo de credenciais
 if getattr(sys, "frozen", False):
@@ -541,6 +553,199 @@ def load_state():
     return None
 
 
+# ==============================================================================
+# MOTOR DE DESKTOP REMOTO (CANVAS HTML5 / WEBSOCKETS / NATIVO WINDOWS)
+# ==============================================================================
+is_remote_streaming = False
+
+if SYSTEM == "Windows":
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        MOUSEEVENTF_LEFTDOWN = 0x0002
+        MOUSEEVENTF_LEFTUP = 0x0004
+        MOUSEEVENTF_RIGHTDOWN = 0x0008
+        MOUSEEVENTF_RIGHTUP = 0x0010
+        MOUSEEVENTF_MIDDLEDOWN = 0x0020
+        MOUSEEVENTF_MIDDLEUP = 0x0040
+        MOUSEEVENTF_WHEEL = 0x0800
+        KEYEVENTF_KEYUP = 0x0002
+        KEYEVENTF_UNICODE = 0x0004
+        VK_LWIN = 0x5B
+        VK_CONTROL = 0x11
+        VK_MENU = 0x12
+        VK_DELETE = 0x2E
+
+        VK_MAP = {
+            "Enter": 0x0D, "Backspace": 0x08, "Tab": 0x09, "Escape": 0x1B, "Space": 0x20,
+            "ArrowLeft": 0x25, "ArrowUp": 0x26, "ArrowRight": 0x27, "ArrowDown": 0x28,
+            "Delete": 0x2E, "Home": 0x24, "End": 0x23, "PageUp": 0x21, "PageDown": 0x22,
+            "ShiftLeft": 0xA0, "ShiftRight": 0xA1, "ControlLeft": 0xA2, "ControlRight": 0xA3,
+            "AltLeft": 0x12, "AltRight": 0x12, "MetaLeft": 0x5B, "MetaRight": 0x5C,
+        }
+    except Exception:
+        pass
+
+
+def handle_remote_mouse(data):
+    if SYSTEM != "Windows":
+        return
+    try:
+        action = data.get("type")
+        if action == "mouse_move":
+            user32.SetCursorPos(int(data.get("x", 0)), int(data.get("y", 0)))
+        elif action == "mouse_down":
+            btn = data.get("button", "left")
+            user32.SetCursorPos(int(data.get("x", 0)), int(data.get("y", 0)))
+            if btn == "left":
+                user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+            elif btn == "right":
+                user32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
+            elif btn == "middle":
+                user32.mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, 0)
+        elif action == "mouse_up":
+            btn = data.get("button", "left")
+            user32.SetCursorPos(int(data.get("x", 0)), int(data.get("y", 0)))
+            if btn == "left":
+                user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+            elif btn == "right":
+                user32.mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
+            elif btn == "middle":
+                user32.mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, 0)
+        elif action == "mouse_wheel":
+            delta = data.get("delta", 0) * 120
+            user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, int(delta), 0)
+    except Exception:
+        pass
+
+
+def handle_remote_keyboard(data):
+    if SYSTEM != "Windows":
+        return
+    try:
+        action = data.get("type")
+        key = data.get("key", "")
+        code = data.get("code", "")
+        is_down = action == "key_down"
+        flags = 0 if is_down else KEYEVENTF_KEYUP
+
+        if code in VK_MAP:
+            user32.keybd_event(VK_MAP[code], 0, flags, 0)
+            return
+
+        if action == "special_key":
+            cmd = data.get("command")
+            if cmd == "win":
+                user32.keybd_event(VK_LWIN, 0, 0, 0)
+                user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+            elif cmd == "ctrl_alt_del":
+                user32.keybd_event(VK_CONTROL, 0, 0, 0)
+                user32.keybd_event(VK_MENU, 0, 0, 0)
+                user32.keybd_event(VK_DELETE, 0, 0, 0)
+                user32.keybd_event(VK_DELETE, 0, KEYEVENTF_KEYUP, 0)
+                user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+                user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+            return
+
+        if len(key) == 1:
+            u_flags = KEYEVENTF_UNICODE | (0 if is_down else KEYEVENTF_KEYUP)
+            user32.keybd_event(0, ord(key), u_flags, 0)
+    except Exception:
+        pass
+
+
+async def remote_desktop_loop(api_url: str, device_id: str, agent_key: str):
+    global is_remote_streaming
+    if not HAS_REMOTE_DESKTOP:
+        return
+
+    # Converte http(s) para ws(s)
+    ws_proto = "wss:" if api_url.startswith("https") else "ws:"
+    host = api_url.split("://")[-1].rstrip("/")
+    relay_url = f"{ws_proto}//{host}/remote-desktop/ws/agent/{device_id}?key={agent_key}"
+
+    while True:
+        try:
+            async with websockets.connect(
+                relay_url,
+                max_size=10 * 1024 * 1024,
+                ping_interval=15,
+                ping_timeout=30
+            ) as ws:
+                with mss.mss() as sct:
+                    monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+                    await ws.send(json.dumps({
+                        "type": "screen_info",
+                        "width": monitor["width"],
+                        "height": monitor["height"]
+                    }))
+
+                    async def stream_frames():
+                        global is_remote_streaming
+                        target_fps = 18
+                        frame_interval = 1.0 / target_fps
+                        while True:
+                            if not is_remote_streaming:
+                                await asyncio.sleep(0.5)
+                                continue
+
+                            start_t = time.time()
+                            try:
+                                sct_img = sct.grab(monitor)
+                                img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+                                if img.width > 1920:
+                                    img.thumbnail((1920, 1080), Image.Resampling.LANCZOS)
+                                buf = io.BytesIO()
+                                img.save(buf, format="JPEG", quality=55, optimize=True)
+                                await ws.send(buf.getvalue())
+                            except Exception:
+                                break
+
+                            elapsed = time.time() - start_t
+                            await asyncio.sleep(max(0, frame_interval - elapsed))
+
+                    async def listen_input():
+                        global is_remote_streaming
+                        while True:
+                            try:
+                                msg = await ws.recv()
+                                if isinstance(msg, str):
+                                    data = json.loads(msg)
+                                    action = data.get("type", "")
+                                    if action == "session_control":
+                                        is_remote_streaming = data.get("action") == "start_streaming"
+                                    elif action.startswith("mouse_"):
+                                        handle_remote_mouse(data)
+                                    elif action.startswith("key_") or action == "special_key":
+                                        handle_remote_keyboard(data)
+                            except Exception:
+                                break
+
+                    t1 = asyncio.create_task(stream_frames())
+                    t2 = asyncio.create_task(listen_input())
+                    done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_EXCEPTION)
+                    for p in pending:
+                        p.cancel()
+
+        except Exception:
+            await asyncio.sleep(5)
+
+
+def start_remote_desktop_background(api_url: str, device_id: str, agent_key: str):
+    """Dispara o motor de controle remoto em uma thread assíncrona separada"""
+    if not HAS_REMOTE_DESKTOP:
+        return
+
+    def runner():
+        try:
+            asyncio.run(remote_desktop_loop(api_url, device_id, agent_key))
+        except Exception:
+            pass
+
+    t = threading.Thread(target=runner, daemon=True, name="UblockRemoteDesktopThread")
+    t.start()
+
+
 def main():
     parser = argparse.ArgumentParser(description=f"Ublock RMM - Agente de Monitoramento ({SYSTEM})")
     parser.add_argument("-token", "--token", help="Codigo de pareamento gerado no painel")
@@ -689,6 +894,11 @@ def main():
     interval = args.interval or 15
     print(f"\n[3/3] Monitoramento em Tempo Real ativo (Heartbeat a cada {interval}s)...")
     print("      Aguardando comandos e mantendo o status ONLINE no painel.\n")
+
+    # Inicia motor de desktop remoto em background (Modo Standby)
+    if HAS_REMOTE_DESKTOP:
+        start_remote_desktop_background(api_url, device_id, agent_key)
+        print("      [DESKTOP REMOTO] Motor de tela e controle interativo ativado em background (Standby)!\n")
 
     count = 0
     while True:

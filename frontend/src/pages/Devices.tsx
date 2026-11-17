@@ -4,12 +4,14 @@ import { api } from '../services/api';
 import { StatusBadge } from '../components/StatusBadge';
 import { OSBadge } from '../components/OSBadge';
 import { EmergencyActionModal } from '../components/EmergencyActionModal';
+import { RemoteDesktopModal } from '../components/RemoteDesktopModal';
 import { EnrollAgentModal } from '../components/EnrollAgentModal';
 import { Modal } from '../components/Modal';
 import { 
   Search, 
   Plus, 
   ShieldAlert, 
+  Monitor,
   Eye, 
   Edit,
   Trash2, 
@@ -52,6 +54,7 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
 
   // Modals
   const [emergencyDevice, setEmergencyDevice] = useState<Device | null>(null);
+  const [remoteDevice, setRemoteDevice] = useState<Device | null>(null);
   const [emergencyAccounts, setEmergencyAccounts] = useState<DeviceAccount[]>([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
@@ -462,7 +465,17 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {/* Remote Desktop Action */}
+                        <button
+                          onClick={() => setRemoteDevice(device)}
+                          title="Acessar Área de Trabalho Remota (Ao Vivo)"
+                          className="px-2 py-1 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[10px] font-semibold flex items-center gap-1 transition"
+                        >
+                          <Monitor className="w-3 h-3" />
+                          <span>Remoto</span>
+                        </button>
+
                         {/* Emergency Lockdown Action */}
                         <button
                           onClick={() => openEmergencyModal(device)}
@@ -775,6 +788,15 @@ export const Devices: React.FC<DevicesProps> = ({ onSelectDevice }) => {
           device={emergencyDevice}
           accounts={emergencyAccounts}
           onSubmit={handleEmergencySubmit}
+        />
+      )}
+
+      {/* Remote Desktop Modal */}
+      {remoteDevice && (
+        <RemoteDesktopModal
+          isOpen={!!remoteDevice}
+          onClose={() => setRemoteDevice(null)}
+          device={remoteDevice}
         />
       )}
 

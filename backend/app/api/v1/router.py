@@ -8,6 +8,7 @@ from app.api.v1.commands import router as commands_router
 from app.api.v1.audit import router as audit_router
 from app.api.v1.health import router as health_router
 from app.api.v1.agent import router as agent_router
+from app.api.v1.remote_desktop import router as remote_desktop_router
 
 api_v1_router = APIRouter()
 
@@ -20,3 +21,4 @@ api_v1_router.include_router(departments_router)
 api_v1_router.include_router(commands_router)
 api_v1_router.include_router(audit_router)
 api_v1_router.include_router(agent_router)
+api_v1_router.include_router(remote_desktop_router)
