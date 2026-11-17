@@ -36,6 +36,16 @@ schtasks /delete /tn "UblockAgent" /f >nul 2>&1
 echo [2/4] Instalando arquivos em %INSTALL_DIR%...
 copy /y "%~dp0ublock-agent.exe" "%INSTALL_DIR%\ublock-agent.exe" >nul
 
+:: Desbloquear arquivo contra SmartScreen e adicionar excecao no Defender
+powershell -NoProfile -Command "Unblock-File -Path '%INSTALL_DIR%\ublock-agent.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionPath '%INSTALL_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'ublock-agent.exe' -ErrorAction SilentlyContinue" >nul 2>&1
+
+:: Reaproveitar credencial se existir na pasta de origem
+if exist "%~dp0agent_state.json" (
+    if not exist "%INSTALL_DIR%\agent_state.json" (
+        copy /y "%~dp0agent_state.json" "%INSTALL_DIR%\agent_state.json" >nul
+    )
+)
+
 :: 3. Solicitar ou reaproveitar codigo de pareamento
 echo.
 echo ========================================================
@@ -43,15 +53,27 @@ echo   PAREAMENTO DO COMPUTADOR
 echo ========================================================
 echo.
 
+set "HAS_REGISTERED=0"
+if exist "%INSTALL_DIR%\agent_state.json" set "HAS_REGISTERED=1"
+if exist "%~dp0agent_state.json" set "HAS_REGISTERED=1"
+
 set "TOKEN=%~1"
 if "!TOKEN!"=="" (
-    set /p TOKEN="Cole o Codigo de Pareamento gerado no Painel Web (ex: ublock_bulk_...): "
+    if "!HAS_REGISTERED!"=="1" (
+        echo [INFO] Pareamento ja configurado com a nuvem Ublock!
+        echo Pressione ENTER para MANTER a conexao ativa (Recomendado).
+        echo Ou cole um NOVO codigo de pareamento caso queira recadastrar:
+        set /p TOKEN=""
+    ) else (
+        set /p TOKEN="Cole o Codigo de Pareamento gerado no Painel Web (ex: ublock_bulk_...): "
+    )
 )
 set "TOKEN=!TOKEN: =!"
 
 if "!TOKEN!"=="" (
-    if exist "%INSTALL_DIR%\agent_state.json" (
-        echo [INFO] Nenhum token informado. Utilizando pareamento ja existente...
+    if "!HAS_REGISTERED!"=="1" (
+        echo [OK] Mantendo pareamento existente. Pulando etapa de registro.
+        if exist "%~dp0agent_state.json" copy /y "%~dp0agent_state.json" "%INSTALL_DIR%\agent_state.json" >nul 2>&1
     ) else (
         echo [ERRO] E necessario informar o codigo de pareamento na primeira instalacao!
         timeout /t 5 >nul
@@ -59,19 +81,22 @@ if "!TOKEN!"=="" (
     )
 ) else (
     echo.
-    echo [3/4] Removendo registro anterior e pareando maquina com a nuvem...
-    if exist "%INSTALL_DIR%\agent_state.json" del /f /q "%INSTALL_DIR%\agent_state.json" >nul 2>&1
-    if exist "%~dp0agent_state.json" del /f /q "%~dp0agent_state.json" >nul 2>&1
-    if exist "%~dp0agent\scripts\agent_state.json" del /f /q "%~dp0agent\scripts\agent_state.json" >nul 2>&1
-    
+    echo [3/4] Pareando maquina com a nuvem Ublock...
     cd /d "%INSTALL_DIR%"
     "%INSTALL_DIR%\ublock-agent.exe" -token "!TOKEN!" -api "https://ublock-api-fn7d.onrender.com/api/v1" --enroll-only
     if !errorlevel! neq 0 (
         echo.
-        echo [ERRO] Falha ao parear com o servidor central Ublock.
-        echo Verifique sua conexao com a internet e a validade do token.
-        timeout /t 5 >nul
-        exit /b 1
+        echo [AVISO] Falha ao parear com este token.
+        if "!HAS_REGISTERED!"=="1" (
+            echo Recuperando configuracao anterior de pareamento funcional...
+            if exist "%~dp0agent_state.json" copy /y "%~dp0agent_state.json" "%INSTALL_DIR%\agent_state.json" >nul 2>&1
+        ) else (
+            echo Verifique se o token de pareamento ainda esta valido no painel web.
+            timeout /t 5 >nul
+            exit /b 1
+        )
+    ) else (
+        copy /y "%INSTALL_DIR%\agent_state.json" "%~dp0agent_state.json" >nul 2>&1
     )
 )
 

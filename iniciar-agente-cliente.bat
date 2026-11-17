@@ -15,6 +15,16 @@ if not exist "%~dp0ublock-agent.exe" (
     exit /b 1
 )
 
+:: Desbloquear arquivo executavel
+powershell -NoProfile -Command "Unblock-File -Path '%~dp0ublock-agent.exe' -ErrorAction SilentlyContinue" >nul 2>&1
+
+:: Sincronizar credencial salva se existir em ProgramFiles
+if exist "%ProgramFiles%\UblockAgent\agent_state.json" (
+    if not exist "%~dp0agent_state.json" (
+        copy /y "%ProgramFiles%\UblockAgent\agent_state.json" "%~dp0agent_state.json" >nul 2>&1
+    )
+)
+
 set "HAS_STATE=0"
 if exist "%~dp0agent_state.json" set "HAS_STATE=1"
 if exist "%ProgramFiles%\UblockAgent\agent_state.json" set "HAS_STATE=1"
